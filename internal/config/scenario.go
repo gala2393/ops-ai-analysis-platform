@@ -26,6 +26,48 @@ type Scenario struct {
 	UnknownHosts int `yaml:"unknown_exporter_hosts"`
 	// UnknownJob is the job name used for exporters no service rule recognises.
 	UnknownJob string `yaml:"unknown_job"`
+
+	// SystemdOnlyHosts run mysql/redis/nginx under systemd without any exporter,
+	// so only node_systemd_unit_state reveals the service.
+	SystemdOnlyHosts int `yaml:"systemd_only_hosts"`
+
+	Anomalies Anomalies `yaml:"anomalies"`
+
+	// The fields below derive a variant fleet from the same seed: hosts are
+	// removed or appended and exporters moved, which exercises asset diffing.
+	DropHosts     []string            `yaml:"drop_hosts"`
+	AddHosts      int                 `yaml:"add_hosts"`
+	AddExporters  map[string][]string `yaml:"add_exporters"`
+	DropExporters map[string][]string `yaml:"drop_exporters"`
+}
+
+// Anomalies counts the problems planted into the generated fleet. Every
+// planted host is distinct, so each count maps to its own set of hosts.
+type Anomalies struct {
+	// DiskGroup hosts share DiskGroupRole/DiskGroupDC and have a nearly full
+	// disk; they must be reported as one problem group.
+	DiskGroup     int    `yaml:"disk_group"`
+	DiskGroupRole string `yaml:"disk_group_role"`
+	DiskGroupDC   string `yaml:"disk_group_dc"`
+	DiskFastFill  int    `yaml:"disk_fast_fill"`
+	// DBDiskWarn db hosts sit between the role=db warn override (75) and the
+	// default warn threshold (80).
+	DBDiskWarn   int `yaml:"db_disk_warn"`
+	CPUHigh      int `yaml:"cpu_high"`
+	MemHigh      int `yaml:"mem_high"`
+	SwapHigh     int `yaml:"swap_high"`
+	InodeHigh    int `yaml:"inode_high"`
+	Reboot       int `yaml:"reboot"`
+	OOM          int `yaml:"oom"`
+	MySQLConn    int `yaml:"mysql_conn"`
+	HostDown     int `yaml:"host_down"`
+	ExporterDown int `yaml:"exporter_down"`
+}
+
+// Total is the number of distinct hosts the plan needs.
+func (a Anomalies) Total() int {
+	return a.DiskGroup + a.DiskFastFill + a.DBDiskWarn + a.CPUHigh + a.MemHigh + a.SwapHigh +
+		a.InodeHigh + a.Reboot + a.OOM + a.MySQLConn + a.HostDown + a.ExporterDown
 }
 
 // LoadScenario loads and validates a mock scenario file.
@@ -54,6 +96,25 @@ func LoadScenario(path string) (*Scenario, error) {
 		if f.n < 0 || f.n > sc.Hosts {
 			p.add(f.key, "必须在 0 到 hosts 之间 (must be within 0..hosts)")
 		}
+	}
+	a := sc.Anomalies
+	for key, n := range map[string]int{
+		"systemd_only_hosts": sc.SystemdOnlyHosts, "add_hosts": sc.AddHosts,
+		"anomalies.disk_group": a.DiskGroup, "anomalies.disk_fast_fill": a.DiskFastFill,
+		"anomalies.db_disk_warn": a.DBDiskWarn, "anomalies.cpu_high": a.CPUHigh, "anomalies.mem_high": a.MemHigh,
+		"anomalies.swap_high": a.SwapHigh, "anomalies.inode_high": a.InodeHigh, "anomalies.reboot": a.Reboot,
+		"anomalies.oom": a.OOM, "anomalies.mysql_conn": a.MySQLConn, "anomalies.host_down": a.HostDown,
+		"anomalies.exporter_down": a.ExporterDown,
+	} {
+		if n < 0 {
+			p.add(key, "不能为负数 (must not be negative)")
+		}
+	}
+	if a.Total()+sc.SystemdOnlyHosts > sc.Hosts {
+		p.add("anomalies", "植入的异常主机数超过 hosts (planted hosts exceed hosts)")
+	}
+	if a.HostDown+a.ExporterDown+a.MySQLConn > sc.MySQLHosts {
+		p.add("anomalies", "host_down+exporter_down+mysql_conn 不能超过 mysql_hosts (needs mysql hosts)")
 	}
 	if sc.LiveInterval < 0 {
 		p.add("live_interval", "不能为负数 (must not be negative)")

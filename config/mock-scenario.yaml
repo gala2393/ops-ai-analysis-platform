@@ -1,9 +1,10 @@
-# Mock Prometheus 场景（基础骨架；完整异常植入由 mock 生成器扩展）。
+# Mock Prometheus 默认场景：180 台主机，固定随机种子，相同种子产生完全相同的数据与期望清单。
 hosts: 180
 seed: 20260101
 history: 6h
 step: 60s
 live_interval: 30s
+# 缺少部分企业标签（env/biz/dc/owner）的主机比例，用于验证“缺标签”提示
 missing_label_fraction: 0.05
 labels:
   env: [prod, staging]
@@ -11,9 +12,29 @@ labels:
   biz: [pay, order, user, search]
   dc: [bj1, sh1, gz1]
   owner: [ops-a, ops-b, ops-c]
-# 与 node_exporter 同机的其他 exporter 数量（优先分配给对应角色的主机）
-mysql_hosts: 24
-redis_hosts: 12
-nginx_hosts: 16
+# 与 node_exporter 同机（同 IP、不同端口）的其他 exporter 数量，优先分配给对应角色的主机
+mysql_hosts: 24   # :9104
+redis_hosts: 12   # :9121
+nginx_hosts: 16   # :9113
 unknown_exporter_hosts: 3
+# 没有任何服务规则能识别的 job（未分类）
 unknown_job: legacy-billing
+# 只能通过 node_systemd_unit_state 发现服务的主机数（无对应 exporter）
+systemd_only_hosts: 6
+
+# 植入的异常（每个异常使用不同的主机）；期望结果由 mock-prom -expected-out 写出
+anomalies:
+  disk_group: 15          # 磁盘 >90%，全部为 role=app,dc=sh1，应合并为一个问题组
+  disk_group_role: app
+  disk_group_dc: sh1
+  disk_fast_fill: 3       # 磁盘快速写满（预计 <3 天）
+  db_disk_warn: 2         # role=db 主机磁盘 75~80%：默认阈值正常，db 覆盖阈值（warn 75）告警
+  cpu_high: 5
+  mem_high: 4
+  swap_high: 3
+  inode_high: 2
+  reboot: 3               # 24 小时内重启
+  oom: 2
+  mysql_conn: 2           # MySQL 连接数使用率过高
+  host_down: 1            # 整机宕机：该主机所有 exporter 均 down
+  exporter_down: 1        # 仅 node exporter 挂掉，同机 mysql exporter 仍 up

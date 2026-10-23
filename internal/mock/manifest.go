@@ -43,6 +43,22 @@ func (f *Fleet) Manifest() *Manifest {
 	if m.MissingLabelHosts == nil {
 		m.MissingLabelHosts = []string{}
 	}
+	alive := map[string]bool{}
+	for _, h := range f.Hosts {
+		alive[h.Name] = true
+	}
+	for _, a := range f.Planted {
+		if alive[a.Host] {
+			m.Anomalies = append(m.Anomalies, a)
+		}
+	}
+	sort.Slice(m.Anomalies, func(i, j int) bool {
+		a, b := m.Anomalies[i], m.Anomalies[j]
+		if a.CheckID != b.CheckID {
+			return a.CheckID < b.CheckID
+		}
+		return a.Host < b.Host
+	})
 	for _, h := range f.Hosts {
 		m.Services[h.Name] = h.Services()
 		down := 0

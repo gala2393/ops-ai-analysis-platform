@@ -274,9 +274,12 @@ func TestLoadScenario(t *testing.T) {
 		t.Errorf("scenario = %+v", sc)
 	}
 	for name, y := range map[string]string{
-		"zero hosts": "hosts: 0\n",
-		"bad step":   "hosts: 1\nhistory: 1m\nstep: 2m\n",
-		"bad frac":   "hosts: 1\nmissing_label_fraction: 2\n",
+		"zero hosts":       "hosts: 0\n",
+		"bad step":         "hosts: 1\nhistory: 1m\nstep: 2m\n",
+		"bad frac":         "hosts: 1\nmissing_label_fraction: 2\n",
+		"negative anomaly": "hosts: 5\nanomalies: {cpu_high: -1}\n",
+		"too many planted": "hosts: 5\nanomalies: {cpu_high: 3, mem_high: 3}\n",
+		"down needs mysql": "hosts: 5\nanomalies: {host_down: 1}\n",
 	} {
 		if _, err := LoadScenario(writeFile(t, dir, "bad.yaml", y)); err == nil {
 			t.Errorf("%s: expected error", name)

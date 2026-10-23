@@ -1,0 +1,49 @@
+﻿# 资产变更场景：与默认场景使用同一随机种子（主机、标签、植入异常完全一致），
+# 仅增删主机并调整部分主机的服务，用于验证“资产变更对比”（新增/下线主机、服务增减）。
+# 主机名取自默认场景的期望清单，且均不是植入异常的主机。
+hosts: 180
+seed: 20260101
+history: 6h
+step: 60s
+live_interval: 30s
+missing_label_fraction: 0.05
+labels:
+  env: [prod, staging]
+  role: [app, db, cache, web]
+  biz: [pay, order, user, search]
+  dc: [bj1, sh1, gz1]
+  owner: [ops-a, ops-b, ops-c]
+mysql_hosts: 24
+redis_hosts: 12
+nginx_hosts: 16
+unknown_exporter_hosts: 3
+unknown_job: legacy-billing
+systemd_only_hosts: 6
+anomalies:
+  disk_group: 15
+  disk_group_role: app
+  disk_group_dc: sh1
+  disk_fast_fill: 3
+  db_disk_warn: 2
+  cpu_high: 5
+  mem_high: 4
+  swap_high: 3
+  inode_high: 2
+  reboot: 3
+  oom: 2
+  mysql_conn: 2
+  host_down: 1
+  exporter_down: 1
+
+# 下线 5 台（含 1 台 redis、1 台 nginx 主机）
+drop_hosts: [app-gz1-011, app-sh1-001, app-bj1-001, web-bj1-003, cache-bj1-003]
+# 新增 6 台（db/cache/web 角色自带对应 exporter）
+add_hosts: 6
+# 服务变化：两台 db 主机新增 mysql exporter，一台 app 主机新增 redis exporter
+add_exporters:
+  mysql: [db-bj1-008, db-bj1-009]
+  redis: [app-bj1-002]
+# 服务变化：两台缓存主机下线 redis exporter，一台 web 主机下线 nginx exporter
+drop_exporters:
+  redis: [cache-bj1-001, cache-bj1-002]
+  nginx: [web-bj1-001]

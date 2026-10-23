@@ -85,18 +85,34 @@ type Host struct {
 	MySQLMaxConn float64
 	MySQLConnPct float64
 
+	// SystemdOnly lists services running under systemd without an exporter.
+	SystemdOnly []string
+	// Systemd is true when node_exporter exposes node_systemd_unit_state.
+	Systemd bool
+
 	phase float64
 	salt  uint64
 }
 
-// Services lists the service ids this host runs, derived from its exporters.
+// Services lists the service ids this host runs, derived from its exporters
+// and from systemd units of services that have no exporter.
 func (h *Host) Services() []string {
 	var out []string
+	seen := map[string]bool{}
+	add := func(kind string) {
+		if !seen[kind] {
+			seen[kind] = true
+			out = append(out, kind)
+		}
+	}
 	for _, t := range h.Targets {
 		switch t.Kind {
 		case KindNode, KindMySQL, KindRedis, KindNginx:
-			out = append(out, t.Kind)
+			add(t.Kind)
 		}
+	}
+	for _, kind := range h.SystemdOnly {
+		add(kind)
 	}
 	return out
 }
@@ -117,42 +133,68 @@ type Fleet struct {
 	Anchor     time.Time
 	Hosts      []*Host
 	UnknownJob string
+	// Planted is the ground truth of every finding the default inspection
+	// items produce on this fleet.
+	Planted []Anomaly
+
+	planted map[*Host]bool
 }
 
 // BuildFleet deterministically generates the fleet for a scenario. anchor is
 // the "now" the generated trends are expressed relative to.
 func BuildFleet(sc *config.Scenario, anchor time.Time) *Fleet {
 	rng := rand.New(rand.NewSource(sc.Seed))
-	f := &Fleet{Scenario: sc, Anchor: anchor, UnknownJob: sc.UnknownJob}
+	plantRNG := rand.New(rand.NewSource(sc.Seed ^ 0x5eed1e55))
+	f := &Fleet{Scenario: sc, Anchor: anchor, UnknownJob: sc.UnknownJob, planted: map[*Host]bool{}}
 	if f.UnknownJob == "" {
 		f.UnknownJob = "legacy-billing"
 	}
-	pool := func(key string) []string {
-		if v := sc.Labels[key]; len(v) > 0 {
-			return v
-		}
-		return defaultLabelPools[key]
-	}
 
+	group := f.diskGroupIndexes(plantRNG)
+	inGroup := map[int]bool{}
+	for _, idx := range group {
+		inGroup[idx] = true
+	}
 	counters := map[string]int{}
 	for i := 0; i < sc.Hosts; i++ {
-		h := &Host{Index: i, Labels: map[string]string{}, salt: uint64(i)*0x9e3779b97f4a7c15 + uint64(sc.Seed)}
-		for _, k := range labelOrder {
-			vals := pool(k)
-			h.Labels[k] = vals[rng.Intn(len(vals))]
-		}
-		key := h.Labels["role"] + "-" + h.Labels["dc"]
-		counters[key]++
-		h.Name = fmt.Sprintf("%s-%03d", key, counters[key])
-		h.IP = fmt.Sprintf("10.20.%d.%d", 1+i/250, 1+i%250)
-		h.Targets = []*Target{newTarget(KindNode, h.IP, f.UnknownJob)}
-		f.fillResources(h, rng)
-		f.Hosts = append(f.Hosts, h)
+		f.Hosts = append(f.Hosts, f.newHost(i, rng, counters, inGroup[i]))
 	}
 
-	f.dropLabels(rng)
 	f.assignExporters(rng)
+	f.assignSystemdOnly(rng)
+	f.plant(plantRNG, group)
+	f.dropLabels(rng)
+	f.applyVariant(counters)
+	for _, h := range f.Hosts {
+		h.Systemd = len(h.Targets) > 1 || len(h.SystemdOnly) > 0 || h.Index%3 == 0
+	}
 	return f
+}
+
+func (f *Fleet) pool(key string) []string {
+	if v := f.Scenario.Labels[key]; len(v) > 0 {
+		return v
+	}
+	return defaultLabelPools[key]
+}
+
+// newHost draws a plain healthy host: labels, node target and resources.
+func (f *Fleet) newHost(i int, rng *rand.Rand, counters map[string]int, diskGroup bool) *Host {
+	h := &Host{Index: i, Labels: map[string]string{}, salt: uint64(i)*0x9e3779b97f4a7c15 + uint64(f.Scenario.Seed)}
+	for _, k := range labelOrder {
+		vals := f.pool(k)
+		h.Labels[k] = vals[rng.Intn(len(vals))]
+	}
+	if diskGroup {
+		h.Labels["role"], h.Labels["dc"] = f.groupRole(), f.groupDC()
+	}
+	key := h.Labels["role"] + "-" + h.Labels["dc"]
+	counters[key]++
+	h.Name = fmt.Sprintf("%s-%03d", key, counters[key])
+	h.IP = fmt.Sprintf("10.20.%d.%d", 1+i/250, 1+i%250)
+	h.Targets = []*Target{newTarget(KindNode, h.IP, f.UnknownJob)}
+	f.fillResources(h, rng)
+	return h
 }
 
 func newTarget(kind, ip, unknownJob string) *Target {
@@ -209,14 +251,24 @@ func newMount(path, fstype, dev string, size, used float64, rng *rand.Rand) *Mou
 
 // dropLabels removes some enterprise labels from a fraction of hosts, mimicking
 // targets that were onboarded without the full label set.
+// Planted hosts keep their full label set so their anomalies stay unambiguous.
 func (f *Fleet) dropLabels(rng *rand.Rand) {
+	var candidates []*Host
+	for _, h := range f.Hosts {
+		if !f.planted[h] {
+			candidates = append(candidates, h)
+		}
+	}
 	n := int(math.Round(f.Scenario.MissingLabelFraction * float64(len(f.Hosts))))
+	if n > len(candidates) {
+		n = len(candidates)
+	}
 	if n == 0 {
 		return
 	}
 	droppable := []string{"env", "biz", "dc", "owner"}
-	for _, idx := range rng.Perm(len(f.Hosts))[:n] {
-		h := f.Hosts[idx]
+	for _, idx := range rng.Perm(len(candidates))[:n] {
+		h := candidates[idx]
 		k := 1 + rng.Intn(2)
 		for _, di := range rng.Perm(len(droppable))[:k] {
 			label := droppable[di]
@@ -259,6 +311,35 @@ func (f *Fleet) assignExporters(rng *rand.Rand) {
 		for _, h := range pick(x.role, x.n) {
 			h.Targets = append(h.Targets, newTarget(x.kind, h.IP, f.UnknownJob))
 		}
+	}
+}
+
+// assignSystemdOnly makes some single-exporter hosts run a service that only
+// node_systemd_unit_state reveals.
+func (f *Fleet) assignSystemdOnly(rng *rand.Rand) {
+	kinds := []struct{ kind, role string }{{KindMySQL, "db"}, {KindRedis, "cache"}, {KindNginx, "web"}}
+	for j := 0; j < f.Scenario.SystemdOnlyHosts; j++ {
+		x := kinds[j%len(kinds)]
+		var preferred, others []*Host
+		for _, h := range f.Hosts {
+			if len(h.Targets) != 1 || len(h.SystemdOnly) > 0 {
+				continue
+			}
+			if h.Labels["role"] == x.role {
+				preferred = append(preferred, h)
+			} else {
+				others = append(others, h)
+			}
+		}
+		all := append(preferred, others...)
+		if len(all) == 0 {
+			return
+		}
+		pickIdx := rng.Intn(len(preferred) + len(others))
+		if len(preferred) > 0 {
+			pickIdx = rng.Intn(len(preferred))
+		}
+		all[pickIdx].SystemdOnly = []string{x.kind}
 	}
 }
 

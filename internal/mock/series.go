@@ -93,6 +93,11 @@ func (f *Fleet) targetSeries(h *Host, t *Target) []*seriesDef {
 	}
 	add("up", constant(up))
 	if t.Down {
+		// The host name must stay resolvable for a dead node exporter (asset
+		// inventory style), so node_uname_info is the one series that survives.
+		if t.Kind == KindNode {
+			add("node_uname_info", constant(1), unameLabels(h)...)
+		}
 		return defs
 	}
 
@@ -129,6 +134,11 @@ func targetLabelPairs(h *Host, t *Target) []string {
 		}
 	}
 	return kv
+}
+
+func unameLabels(h *Host) []string {
+	return []string{"nodename", h.Name, "sysname", "Linux", "release", "5.14.0-362.el9.x86_64",
+		"version", "#1 SMP PREEMPT_DYNAMIC", "machine", "x86_64", "domainname", "(none)"}
 }
 
 func (f *Fleet) nodeSeries(h *Host, add func(string, sampleFn, ...string)) {
@@ -204,19 +214,24 @@ func (f *Fleet) nodeSeries(h *Host, add func(string, sampleFn, ...string)) {
 		}
 		return n, true
 	}))
-	add("node_uname_info", booted(func(time.Time) (float64, bool) { return 1, true }),
-		"nodename", h.Name, "sysname", "Linux", "release", "5.14.0-362.el9.x86_64",
-		"version", "#1 SMP PREEMPT_DYNAMIC", "machine", "x86_64", "domainname", "(none)")
+	add("node_uname_info", booted(func(time.Time) (float64, bool) { return 1, true }), unameLabels(h)...)
 
-	units := []string{"sshd.service", "crond.service"}
-	for _, t := range h.Targets {
-		switch t.Kind {
-		case KindMySQL:
-			units = append(units, "mysqld.service")
-		case KindRedis:
-			units = append(units, "redis.service")
-		case KindNginx:
-			units = append(units, "nginx.service")
+	var units []string
+	if h.Systemd {
+		units = []string{"sshd.service", "crond.service"}
+		kinds := append([]string{}, h.SystemdOnly...)
+		for _, t := range h.Targets {
+			kinds = append(kinds, t.Kind)
+		}
+		for _, kind := range kinds {
+			switch kind {
+			case KindMySQL:
+				units = append(units, "mysqld.service")
+			case KindRedis:
+				units = append(units, "redis.service")
+			case KindNginx:
+				units = append(units, "nginx.service")
+			}
 		}
 	}
 	for _, unit := range units {
