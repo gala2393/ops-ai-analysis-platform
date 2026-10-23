@@ -1,0 +1,66 @@
+# 服务识别规则。jobs / apps 为大小写不敏感的子串匹配；
+# metric_prefixes 通过 count by (instance, job) ({__name__=~"<prefix>.+"}) 探测（每条规则一次查询）。
+services:
+  - id: node
+    name: Linux 主机
+    match:
+      jobs: ["node", "agent1"]
+      apps: ["node-exporter", "node_exporter"]
+      metric_prefixes: ["node_"]
+  - id: mysql
+    name: MySQL
+    match:
+      jobs: ["mysql", "mariadb"]
+      apps: ["mysql_exporter", "mysqld_exporter"]
+      metric_prefixes: ["mysql_"]
+  - id: redis
+    name: Redis
+    match:
+      jobs: ["redis"]
+      apps: ["redis_exporter"]
+      metric_prefixes: ["redis_"]
+  - id: nginx
+    name: Nginx
+    match:
+      jobs: ["nginx"]
+      apps: ["nginx_exporter", "nginx-exporter"]
+      metric_prefixes: ["nginx_"]
+  - id: kafka
+    name: Kafka
+    match:
+      jobs: ["kafka"]
+      apps: ["kafka_exporter"]
+      metric_prefixes: ["kafka_"]
+  - id: jvm
+    name: JVM 应用
+    match:
+      jobs: ["jvm", "java", "tomcat"]
+      apps: ["jmx_exporter"]
+      metric_prefixes: ["jvm_"]
+  - id: mongodb
+    name: MongoDB
+    match:
+      jobs: ["mongodb", "mongo"]
+      apps: ["mongodb_exporter"]
+      metric_prefixes: ["mongodb_"]
+  - id: postgres
+    name: PostgreSQL
+    match:
+      jobs: ["postgres", "pgsql"]
+      apps: ["postgres_exporter"]
+      metric_prefixes: ["pg_"]
+  - id: prometheus
+    name: Prometheus
+    match:
+      jobs: ["prometheus"]
+      apps: ["prometheus"]
+      metric_prefixes: ["prometheus_"]
+
+# 通过 systemd 单元状态补充识别服务（需要 node_exporter 开启 systemd collector）
+systemd_units:
+  metric: node_systemd_unit_state
+  map:
+    "mysqld.service": mysql
+    "mariadb.service": mysql
+    "redis.service": redis
+    "nginx.service": nginx

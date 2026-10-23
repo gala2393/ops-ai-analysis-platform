@@ -1,0 +1,179 @@
+# 巡检项。每个巡检项只发起一次聚合即时查询（返回所有实例），不按主机逐个查询。
+# 阈值均为「通用默认」，请按企业标准替换（source 字段会在报告中展示）。
+# compare: > >= < <= == !=；applies_to 为 services.yaml 中的服务 id，留空表示所有主机。
+# 区间/子查询窗口一律 <= 24h。
+items:
+  - id: cpu_usage
+    name: CPU 使用率
+    applies_to: [node]
+    query: '100 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100'
+    compare: ">"
+    warn: 80
+    crit: 90
+    severity: high
+    unit: "%"
+    description: 近 5 分钟平均 CPU 使用率（所有核心平均）。
+    advice_ref: runbook/cpu-high
+    source: "通用默认（待企业标准替换）"
+
+  - id: cpu_peak
+    name: CPU 峰值（1 小时）
+    applies_to: [node]
+    query: 'max_over_time((100 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)[1h:5m])'
+    compare: ">"
+    warn: 90
+    crit: 98
+    severity: medium
+    unit: "%"
+    description: 近 1 小时 CPU 使用率峰值，用于发现短时打满。
+    advice_ref: runbook/cpu-high
+    source: "通用默认（待企业标准替换）"
+
+  - id: memory_usage
+    name: 内存使用率
+    applies_to: [node]
+    query: '(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100'
+    compare: ">"
+    warn: 85
+    crit: 95
+    severity: high
+    unit: "%"
+    description: 基于 MemAvailable 计算的内存使用率。
+    advice_ref: runbook/memory-high
+    source: "通用默认（待企业标准替换）"
+
+  - id: swap_usage
+    name: Swap 使用率
+    applies_to: [node]
+    query: '(1 - node_memory_SwapFree_bytes / node_memory_SwapTotal_bytes) * 100 and node_memory_SwapTotal_bytes > 0'
+    compare: ">"
+    warn: 50
+    crit: 80
+    severity: medium
+    unit: "%"
+    description: Swap 使用率；未配置 Swap 的主机不参与。
+    advice_ref: runbook/swap-high
+    source: "通用默认（待企业标准替换）"
+
+  - id: disk_usage
+    name: 磁盘使用率
+    applies_to: [node]
+    query: '100 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"} * 100)'
+    compare: ">"
+    warn: 80
+    crit: 90
+    severity: high
+    unit: "%"
+    description: 各挂载点磁盘使用率（排除 tmpfs / overlay）。
+    advice_ref: runbook/disk-full
+    group_by_extra: [mountpoint]
+    source: "通用默认（待企业标准替换）"
+
+  - id: inode_usage
+    name: inode 使用率
+    applies_to: [node]
+    query: '100 - (node_filesystem_files_free{fstype!~"tmpfs|overlay"} / node_filesystem_files{fstype!~"tmpfs|overlay"} * 100) and node_filesystem_files{fstype!~"tmpfs|overlay"} > 0'
+    compare: ">"
+    warn: 80
+    crit: 90
+    severity: medium
+    unit: "%"
+    description: 各挂载点 inode 使用率。
+    advice_ref: runbook/inode-full
+    group_by_extra: [mountpoint]
+    source: "通用默认（待企业标准替换）"
+
+  - id: disk_days_to_full
+    name: 磁盘预计写满天数
+    applies_to: [node]
+    query: '(node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / -deriv(node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"}[6h]) / 86400) and deriv(node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"}[6h]) < 0'
+    compare: "<"
+    warn: 7
+    crit: 3
+    severity: high
+    unit: "天"
+    description: 按最近 6 小时线性趋势（与 predict_linear 同一回归）估算可用空间耗尽所需天数，仅统计持续下降的挂载点。
+    advice_ref: runbook/disk-fast-fill
+    group_by_extra: [mountpoint]
+    source: "通用默认（待企业标准替换）"
+
+  - id: target_down
+    name: 采集目标存活
+    query: 'up'
+    compare: "=="
+    crit: 0
+    severity: critical
+    unit: ""
+    description: Prometheus 采集目标不可达（up == 0）。主机宕机与 exporter 异常由发现模块区分原因。
+    advice_ref: runbook/target-down
+    group_by_extra: [job]
+    source: "通用默认（待企业标准替换）"
+
+  - id: recent_reboot
+    name: 近期重启
+    applies_to: [node]
+    query: '(time() - node_boot_time_seconds) / 3600'
+    compare: "<"
+    warn: 24
+    severity: medium
+    unit: "小时"
+    description: 距上次开机不足 24 小时，说明主机近期发生过重启。
+    advice_ref: runbook/unexpected-reboot
+    source: "通用默认（待企业标准替换）"
+
+  - id: oom_kills
+    name: OOM 杀进程
+    applies_to: [node]
+    query: 'increase(node_vmstat_oom_kill[24h])'
+    compare: ">"
+    warn: 0
+    crit: 5
+    severity: high
+    unit: "次"
+    description: 近 24 小时内核 OOM killer 触发次数。
+    advice_ref: runbook/oom-kill
+    source: "通用默认（待企业标准替换）"
+
+  - id: load_per_core
+    name: 单核平均负载
+    applies_to: [node]
+    query: 'node_load1 / on (instance) group_left count by (instance) (node_cpu_seconds_total{mode="idle"})'
+    compare: ">"
+    warn: 1.5
+    crit: 3
+    severity: medium
+    unit: ""
+    description: 1 分钟负载除以 CPU 核数。
+    advice_ref: runbook/load-high
+    source: "通用默认（待企业标准替换）"
+
+  - id: mysql_up
+    name: MySQL 存活
+    applies_to: [mysql]
+    query: 'mysql_up'
+    compare: "=="
+    crit: 0
+    severity: critical
+    unit: ""
+    description: mysqld_exporter 报告 MySQL 不可连接（mysql_up == 0）。
+    advice_ref: runbook/mysql-down
+    source: "通用默认（待企业标准替换）"
+
+  - id: mysql_connections
+    name: MySQL 连接数使用率
+    applies_to: [mysql]
+    query: 'mysql_global_status_threads_connected / mysql_global_variables_max_connections * 100'
+    compare: ">"
+    warn: 80
+    crit: 90
+    severity: high
+    unit: "%"
+    description: 当前连接数占 max_connections 的比例。
+    advice_ref: runbook/mysql-connections
+    source: "通用默认（待企业标准替换）"
+
+# 按内部字段（labels 映射后的 env/role/biz/dc/owner）覆盖阈值，后面的覆盖前面的。
+overrides:
+  - match: { role: db }
+    items:
+      disk_usage: { warn: 75, crit: 85 }

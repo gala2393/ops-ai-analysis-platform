@@ -1,0 +1,12 @@
+# Mock Prometheus 场景（基础骨架；完整异常植入由 mock 生成器扩展）。
+hosts: 180
+seed: 20260101
+history: 6h
+step: 60s
+live_interval: 30s
+missing_label_fraction: 0.05
+labels:
+  env: [prod, staging]
+  role: [app, db, cache, web]
+  biz: [pay, order, user, search]
+  dc: [bj1, sh1, gz1]
