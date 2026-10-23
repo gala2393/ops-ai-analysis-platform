@@ -18,6 +18,14 @@ type Scenario struct {
 	MissingLabelFraction float64 `yaml:"missing_label_fraction"`
 
 	Labels map[string][]string `yaml:"labels"`
+
+	// Extra exporters running next to node_exporter on existing hosts.
+	MySQLHosts   int `yaml:"mysql_hosts"`
+	RedisHosts   int `yaml:"redis_hosts"`
+	NginxHosts   int `yaml:"nginx_hosts"`
+	UnknownHosts int `yaml:"unknown_exporter_hosts"`
+	// UnknownJob is the job name used for exporters no service rule recognises.
+	UnknownJob string `yaml:"unknown_job"`
 }
 
 // LoadScenario loads and validates a mock scenario file.
@@ -38,6 +46,14 @@ func LoadScenario(path string) (*Scenario, error) {
 	}
 	if sc.History > 0 && sc.Step > 0 && sc.Step > sc.History {
 		p.add("step", "不能大于 history (step must not exceed history)")
+	}
+	for _, f := range []struct {
+		key string
+		n   int
+	}{{"mysql_hosts", sc.MySQLHosts}, {"redis_hosts", sc.RedisHosts}, {"nginx_hosts", sc.NginxHosts}, {"unknown_exporter_hosts", sc.UnknownHosts}} {
+		if f.n < 0 || f.n > sc.Hosts {
+			p.add(f.key, "必须在 0 到 hosts 之间 (must be within 0..hosts)")
+		}
 	}
 	if sc.LiveInterval < 0 {
 		p.add("live_interval", "不能为负数 (must not be negative)")

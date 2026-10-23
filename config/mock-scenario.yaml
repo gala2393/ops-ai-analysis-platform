@@ -10,3 +10,10 @@ labels:
   role: [app, db, cache, web]
   biz: [pay, order, user, search]
   dc: [bj1, sh1, gz1]
+  owner: [ops-a, ops-b, ops-c]
+# 与 node_exporter 同机的其他 exporter 数量（优先分配给对应角色的主机）
+mysql_hosts: 24
+redis_hosts: 12
+nginx_hosts: 16
+unknown_exporter_hosts: 3
+unknown_job: legacy-billing

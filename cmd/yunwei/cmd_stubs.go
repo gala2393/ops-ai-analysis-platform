@@ -40,17 +40,6 @@ func runInspect(args []string, stdout, stderr io.Writer) int {
 	return notImplemented("inspect", stderr)
 }
 
-func runMockProm(args []string, stdout, stderr io.Writer) int {
-	fs := newFlagSet("mock-prom", stderr)
-	fs.String("scenario", "config/mock-scenario.yaml", "场景文件 (scenario file)")
-	fs.String("listen", "127.0.0.1:18090", "监听地址 (listen address)")
-	fs.String("expected-out", "", "期望异常清单输出路径 (expected-anomaly manifest path)")
-	if code, done := parseFlags(fs, args); done {
-		return code
-	}
-	return notImplemented("mock-prom", stderr)
-}
-
 func runMockNotify(args []string, stdout, stderr io.Writer) int {
 	fs := newFlagSet("mock-notify", stderr)
 	fs.String("listen", "127.0.0.1:18091", "监听地址 (listen address)")

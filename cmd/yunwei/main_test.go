@@ -32,11 +32,25 @@ func TestUsageAndUnknownCommand(t *testing.T) {
 }
 
 func TestStubsPrintNotImplemented(t *testing.T) {
-	for _, c := range [][]string{{"mock-prom"}, {"mock-notify"}} {
+	for _, c := range [][]string{{"mock-notify"}} {
 		code, _, errOut := runCmd(c...)
 		if code != 1 || !strings.Contains(errOut, "not implemented") {
 			t.Errorf("%v: code=%d stderr=%q", c, code, errOut)
 		}
+	}
+}
+
+func TestMockPromRejectsBadScenario(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "s.yaml")
+	if err := os.WriteFile(path, []byte("hosts: 0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, _, errOut := runCmd("mock-prom", "-scenario", path)
+	if code != 1 || !strings.Contains(errOut, "hosts") {
+		t.Errorf("code=%d stderr=%q", code, errOut)
+	}
+	if code, _, _ := runCmd("mock-prom", "-scenario", filepath.Join(t.TempDir(), "none.yaml")); code != 1 {
+		t.Errorf("missing scenario: code=%d", code)
 	}
 }
 
