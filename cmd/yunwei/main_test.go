@@ -31,12 +31,9 @@ func TestUsageAndUnknownCommand(t *testing.T) {
 	}
 }
 
-func TestStubsPrintNotImplemented(t *testing.T) {
-	for _, c := range [][]string{{"mock-notify"}} {
-		code, _, errOut := runCmd(c...)
-		if code != 1 || !strings.Contains(errOut, "not implemented") {
-			t.Errorf("%v: code=%d stderr=%q", c, code, errOut)
-		}
+func TestMockNotifyRejectsBadListen(t *testing.T) {
+	if code, _, errOut := runCmd("mock-notify", "-listen", "not-an-address"); code != 1 || !strings.Contains(errOut, "cannot listen") {
+		t.Errorf("code=%d stderr=%q", code, errOut)
 	}
 }
 

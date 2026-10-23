@@ -39,12 +39,3 @@ func runInspect(args []string, stdout, stderr io.Writer) int {
 	}
 	return notImplemented("inspect", stderr)
 }
-
-func runMockNotify(args []string, stdout, stderr io.Writer) int {
-	fs := newFlagSet("mock-notify", stderr)
-	fs.String("listen", "127.0.0.1:18091", "监听地址 (listen address)")
-	if code, done := parseFlags(fs, args); done {
-		return code
-	}
-	return notImplemented("mock-notify", stderr)
-}
