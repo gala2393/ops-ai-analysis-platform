@@ -16,6 +16,8 @@ const (
 	outOfOrderWindow  = 24 * time.Hour
 	maxQuerySamples   = 50_000_000
 	engineQueryBudget = 30 * time.Second
+
+	defaultSubqueryStep = time.Minute
 )
 
 // Store couples the TSDB holding the synthetic series with the PromQL engine.
@@ -48,6 +50,9 @@ func OpenStore(defs []*seriesDef) (*Store, error) {
 		LookbackDelta:        5 * time.Minute,
 		EnableAtModifier:     true,
 		EnableNegativeOffset: true,
+		// Required for subqueries without a step such as metric[1h:]; the
+		// engine panics on a nil callback.
+		NoStepSubqueryIntervalFn: func(int64) int64 { return defaultSubqueryStep.Milliseconds() },
 	})
 	return &Store{db: db, eng: eng, dir: dir, defs: defs}, nil
 }

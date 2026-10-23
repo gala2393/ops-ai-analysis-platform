@@ -108,6 +108,11 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 func (s *Server) counted(c *atomic.Int64, h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		c.Add(1)
+		defer func() {
+			if rec := recover(); rec != nil {
+				writeError(w, http.StatusInternalServerError, "internal", fmt.Sprintf("query engine panic: %v", rec))
+			}
+		}()
 		h(w, r)
 	}
 }

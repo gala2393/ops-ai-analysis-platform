@@ -234,7 +234,7 @@ func checkHTTPURL(p *problems, field, raw string, optional bool) {
 	}
 	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		p.add(field, "必须是 http(s):// 开头的有效地址 (must be a valid http(s) URL), got %q", raw)
+		p.add(field, "必须是 http(s):// 开头的有效地址 (must be a valid http(s) URL), 值已隐藏 (value hidden)")
 	}
 }
 

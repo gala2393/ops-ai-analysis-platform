@@ -187,6 +187,41 @@ func TestPromQLFunctionsEvaluate(t *testing.T) {
 	}
 }
 
+func TestSubqueryWithOmittedStep(t *testing.T) {
+	_, ts := startMock(t, testScenario(), nil)
+	const q = `max_over_time(node_load1[1h:])`
+	end := time.Now()
+	rangeParams := url.Values{
+		"query": {q}, "step": {"60"},
+		"start": {strconv.FormatInt(end.Add(-30*time.Minute).Unix(), 10)}, "end": {strconv.FormatInt(end.Unix(), 10)},
+	}
+	for name, f := range map[string]func() (int, envelope){
+		"instant GET":  func() (int, envelope) { return get(t, ts.URL, "/api/v1/query", url.Values{"query": {q}}) },
+		"instant POST": func() (int, envelope) { return post(t, ts.URL, "/api/v1/query", url.Values{"query": {q}}) },
+		"range GET":    func() (int, envelope) { return get(t, ts.URL, "/api/v1/query_range", rangeParams) },
+		"range POST":   func() (int, envelope) { return post(t, ts.URL, "/api/v1/query_range", rangeParams) },
+	} {
+		code, e := f()
+		if code != 200 || e.Status != "success" {
+			t.Errorf("%s: %d %s %s", name, code, e.Status, e.Error)
+			continue
+		}
+		var d vectorData
+		if err := json.Unmarshal(e.Data, &d); err != nil || len(d.Result) != 12 {
+			t.Errorf("%s: err=%v series=%d", name, err, len(d.Result))
+		}
+	}
+}
+
+func TestHandlerPanicReturnsPrometheusError(t *testing.T) {
+	s, ts := startMock(t, testScenario(), nil)
+	s.store.eng = nil // forces a nil dereference inside the query handler
+	code, e := get(t, ts.URL, "/api/v1/query", url.Values{"query": {"up"}})
+	if code != 500 || e.Status != "error" || e.ErrorType != "internal" || e.Error == "" {
+		t.Errorf("panic response: %d %+v", code, e)
+	}
+}
+
 func TestErrorResponsesUsePrometheusFormat(t *testing.T) {
 	_, ts := startMock(t, testScenario(), nil)
 	code, e := get(t, ts.URL, "/api/v1/query", url.Values{"query": {"sum("}})

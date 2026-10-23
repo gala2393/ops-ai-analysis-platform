@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -82,8 +83,12 @@ func readYAML(path string, out any, strict bool) (missing []string, err error) {
 	return missing, nil
 }
 
+// yamlValueRE matches the offending scalar yaml.v3 quotes in type errors
+// ("cannot unmarshal !!str `value` into bool"), which may be a secret.
+var yamlValueRE = regexp.MustCompile("`[^`]*`")
+
 func cleanYAMLError(err error) string {
-	return strings.TrimPrefix(err.Error(), "yaml: ")
+	return yamlValueRE.ReplaceAllString(strings.TrimPrefix(err.Error(), "yaml: "), "`***`")
 }
 
 func expandNode(n *yaml.Node, lookup LookupFunc, missing map[string]bool) {

@@ -205,6 +205,49 @@ func TestLoadAppInvalid(t *testing.T) {
 	}
 }
 
+func TestLoadAppErrorsNeverLeakSecrets(t *testing.T) {
+	const (
+		hook = "ftp://open.feishu.cn/hook/SYNTHETIC-WEBHOOK-TOKEN-9f3a"
+		key  = "sk-SYNTHETIC-API-KEY-7c1d"
+	)
+	tests := []struct {
+		name, yaml string
+		secrets    []string
+		wantParts  []string
+	}{
+		{"enabled feishu bad scheme",
+			"prometheus: {url: 'http://p'}\nnotify: {feishu: {enabled: true, webhook: '" + hook + "'}}\n",
+			[]string{hook, "SYNTHETIC-WEBHOOK-TOKEN-9f3a"}, []string{"app.yaml", "notify.feishu.webhook"}},
+		{"enabled dingtalk no host",
+			"prometheus: {url: 'http://p'}\nnotify: {dingtalk: {enabled: true, webhook: 'https:///SYNTHETIC-WEBHOOK-TOKEN-9f3a'}}\n",
+			[]string{"SYNTHETIC-WEBHOOK-TOKEN-9f3a"}, []string{"notify.dingtalk.webhook"}},
+		{"api key with other invalid fields",
+			"prometheus: {url: 'ftp://x', max_concurrency: 0}\nllm: {api_key: '" + key + "', base_url: 'nope'}\n",
+			[]string{key}, []string{"prometheus.url", "llm.base_url"}},
+		{"api key in wrong-typed field",
+			"prometheus: {url: 'http://p'}\nllm: {api_key: '" + key + "', timeout: 5}\nnotify: {wecom: {enabled: '" + key + "'}}\n",
+			[]string{key}, []string{"app.yaml"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := LoadApp(writeFile(t, t.TempDir(), "app.yaml", tt.yaml))
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			for _, s := range tt.secrets {
+				if strings.Contains(err.Error(), s) {
+					t.Errorf("error leaks secret %q: %v", s, err)
+				}
+			}
+			for _, part := range tt.wantParts {
+				if !strings.Contains(err.Error(), part) {
+					t.Errorf("error %q does not mention %q", err, part)
+				}
+			}
+		})
+	}
+}
+
 func TestLoadAppMissingFile(t *testing.T) {
 	_, err := LoadApp(filepath.Join(t.TempDir(), "nope.yaml"))
 	if err == nil || !strings.Contains(err.Error(), "nope.yaml") {
