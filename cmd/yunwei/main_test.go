@@ -105,6 +105,42 @@ func TestInvalidConfigFailsCleanly(t *testing.T) {
 	}
 }
 
+func TestYAMLErrorsDoNotEchoSecretsOnStderr(t *testing.T) {
+	const secret = "sk-SYNTHETIC-CLI-SECRET-2b7e"
+	t.Setenv("YW_CLI_MODEL", "m")
+	t.Setenv("YW_CLI_KEY", "k")
+	prom := "prometheus: { url: 'http://127.0.0.1:18090' }\n"
+	tests := []struct {
+		name          string
+		app, ins, svc string
+		want          []string
+	}{
+		{"unknown alias", prom + "llm:\n  api_key: *" + secret + "\n", okIns, okSvc, []string{"app.yaml", "未定义锚点", "第 3 行"}},
+		{"type error", prom + "llm:\n  api_key: [" + secret + "]\n", okIns, okSvc, []string{"llm.api_key", "类型错误", "第 3 行"}},
+		{"malformed quoting", prom + "llm:\n  api_key: \"" + secret + "\\q\"\n", okIns, okSvc, []string{"app.yaml", "语法错误", "第 3 行"}},
+		{"unknown field", okApp, okIns, okSvc + "  - id: x\n    " + secret + ": 1\n", []string{"services.yaml", "services[1]", "未知字段", "第 6 行"}},
+		{"inspection syntax", okApp, "items: ['" + secret + "\n", okSvc, []string{"inspection.yaml", "语法错误"}},
+	}
+	for _, sub := range []string{"inspect", "serve", "check-config"} {
+		for _, tt := range tests {
+			t.Run(sub+"/"+tt.name, func(t *testing.T) {
+				code, out, errOut := runCmd(sub, "-config", bundle(t, tt.app, tt.ins, tt.svc))
+				if code != 1 {
+					t.Fatalf("code = %d, stderr=%q", code, errOut)
+				}
+				if strings.Contains(errOut, "SYNTHETIC") || strings.Contains(out, "SYNTHETIC") {
+					t.Errorf("secret echoed: stdout=%q stderr=%q", out, errOut)
+				}
+				for _, w := range tt.want {
+					if !strings.Contains(errOut, w) {
+						t.Errorf("stderr %q does not mention %q", errOut, w)
+					}
+				}
+			})
+		}
+	}
+}
+
 func TestCheckConfigExpandsEnvAndRedacts(t *testing.T) {
 	path := bundle(t, okApp, okIns, okSvc)
 	t.Setenv("YW_CLI_MODEL", "model-from-env")

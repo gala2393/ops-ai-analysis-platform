@@ -183,7 +183,7 @@ func TestLoadAppInvalid(t *testing.T) {
 		{"missing url", "server: {listen: '127.0.0.1:1'}\n", []string{"app.yaml", "prometheus.url"}},
 		{"bad url scheme", "prometheus: {url: 'ftp://x'}\n", []string{"prometheus.url"}},
 		{"bad yaml", "prometheus: [unclosed\n", []string{"app.yaml", "YAML"}},
-		{"unknown field", "prometheus: {url: 'http://p', bogus: 1}\n", []string{"bogus"}},
+		{"unknown field", "prometheus: {url: 'http://p', bogus: 1}\n", []string{"prometheus", "未知字段", "第 1 行"}},
 		{"bad cron", "prometheus: {url: 'http://p'}\nschedule: ['not a cron']\n", []string{"schedule[0]"}},
 		{"bad duration", "prometheus: {url: 'http://p', timeout: forever}\n", []string{"app.yaml"}},
 		{"zero concurrency", "prometheus: {url: 'http://p', max_concurrency: 0}\n", []string{"prometheus.max_concurrency"}},

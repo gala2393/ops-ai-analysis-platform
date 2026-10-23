@@ -7,9 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
-	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -59,7 +57,7 @@ func readYAML(path string, out any, strict bool) (missing []string, err error) {
 
 	var root yaml.Node
 	if err := yaml.Unmarshal(data, &root); err != nil {
-		return nil, &Error{File: path, Msg: fmt.Sprintf("YAML 格式错误 (invalid YAML): %v", err)}
+		return nil, yamlFailure(path, data, err, nil)
 	}
 	if root.Kind == 0 {
 		return nil, &Error{File: path, Msg: "文件为空 (file is empty)"}
@@ -73,22 +71,14 @@ func readYAML(path string, out any, strict bool) (missing []string, err error) {
 
 	expanded, err := yaml.Marshal(&root)
 	if err != nil {
-		return nil, &Error{File: path, Msg: fmt.Sprintf("YAML 处理失败 (cannot process YAML): %v", err)}
+		return nil, yamlFailure(path, data, err, nil)
 	}
 	dec := yaml.NewDecoder(bytes.NewReader(expanded))
 	dec.KnownFields(strict)
 	if err := dec.Decode(out); err != nil && !errors.Is(err, io.EOF) {
-		return missing, &Error{File: path, Msg: fmt.Sprintf("字段类型或名称错误 (invalid field): %s", cleanYAMLError(err))}
+		return missing, yamlFailure(path, data, err, buildLocator(&root, expanded))
 	}
 	return missing, nil
-}
-
-// yamlValueRE matches the offending scalar yaml.v3 quotes in type errors
-// ("cannot unmarshal !!str `value` into bool"), which may be a secret.
-var yamlValueRE = regexp.MustCompile("`[^`]*`")
-
-func cleanYAMLError(err error) string {
-	return yamlValueRE.ReplaceAllString(strings.TrimPrefix(err.Error(), "yaml: "), "`***`")
 }
 
 func expandNode(n *yaml.Node, lookup LookupFunc, missing map[string]bool) {
