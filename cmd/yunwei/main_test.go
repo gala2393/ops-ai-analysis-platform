@@ -181,7 +181,7 @@ func TestCheckPromAgainstFakeServer(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("code=%d stderr=%q", code, errOut)
 	}
-	for _, want := range []string{"3.1.0", "共 2 个", "异常 1", "no route to host", "P95"} {
+	for _, want := range []string{"3.1.0", "共 2 个", "异常 1", "no route to host", "P95", "status=host_down", "cause=host_down", "DOWN"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q:\n%s", want, out)
 		}

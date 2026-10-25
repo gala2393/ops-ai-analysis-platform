@@ -1,0 +1,60 @@
+# 运维 AI 分析平台主配置。字符串值支持 ${ENV} / ${ENV:-默认值} 展开；
+# 工作目录下的 .env 会在启动时加载，已存在的真实环境变量优先。
+server:
+  listen: "127.0.0.1:18080"
+  base_url: "http://127.0.0.1:18080"
+
+prometheus:
+  # 真实环境 Prometheus（只读访问，低并发）
+  url: "http://PROMETHEUS_HOST:9090"
+  timeout: 30s
+  max_concurrency: 2
+  max_range: 24h
+  min_step: 60s
+
+# 企业标签 -> 内部字段映射（左侧内部字段名固定，右侧填企业实际标签名）
+labels:
+  env: env
+  role: role
+  biz: biz
+  dc: dc
+  owner: owner
+  hostname: nodename
+
+storage:
+  path: "data/yunwei-real.db"
+  retention_days: 90
+
+# 标准 5 段 cron，可配置多条
+schedule:
+  - "30 8 * * *"
+
+report:
+  out_dir: "reports/real"
+  top_n: 10
+
+llm:
+  enabled: false
+  base_url: "${YUNWEI_LLM_BASE_URL}"   # 客户端会追加 /v1/chat/completions
+  model: "${YUNWEI_LLM_MODEL}"
+  api_key: "${YUNWEI_LLM_API_KEY}"
+  timeout: 90s
+  max_groups_per_run: 30
+  daily_token_limit: 2000000
+  mask: true
+
+alert:
+  aggregation_window: 30s
+  reanalyze_interval: 10m
+
+notify:
+  on_inspection: false
+  feishu:
+    enabled: false
+    webhook: ""
+  dingtalk:
+    enabled: false
+    webhook: ""
+  wecom:
+    enabled: false
+    webhook: ""
