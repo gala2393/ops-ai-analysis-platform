@@ -116,6 +116,10 @@ func TestCheckWindows(t *testing.T) {
 		{`max_over_time(rate(x[5m])[2d:5m])`, "max_range"},
 		{`up == 1 and increase(x[2d]) > 0`, "max_range"},
 		{`increase(x[`, "parse"},
+		{`increase(x[max(48h,24h)])`, "duration expression"},
+		{`max_over_time(y[max(48h,24h):1m])`, "duration expression"},
+		{`max_over_time(y[1h:min(1s,2s)])`, "duration expression"},
+		{`max_over_time(rate(x[5m])[1h:min(1s,2s)])`, "duration expression"},
 	}
 	for _, c := range cases {
 		err := CheckWindows(c.q, 24*time.Hour, time.Minute)

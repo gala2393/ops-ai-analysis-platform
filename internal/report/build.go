@@ -119,11 +119,15 @@ func Build(in Input) *Report {
 		r.Top = append(r.Top, sec)
 	}
 
+	healthByKey := map[string]*inspect.HostHealth{}
+	for _, hh := range in.Detail.Hosts {
+		healthByKey[hh.Key] = hh
+	}
 	for _, h := range in.Hosts {
 		if len(h.MissingLabels) > 0 {
 			r.MissingLabels = append(r.MissingLabels, MissingLabelHost{Host: h.Name, Missing: strings.Join(h.MissingLabels, ", ")})
 		}
-		r.Inventory = append(r.Inventory, inventoryHost(h))
+		r.Inventory = append(r.Inventory, inventoryHost(h, healthByKey))
 		if h.Status != discovery.StatusNormal {
 			dh := DownHost{Host: h.Name, Cause: downCause(h)}
 			for _, t := range h.Targets {
@@ -208,11 +212,17 @@ func hostDetails(in Input, itemCfg map[string]config.Item) []HostDetail {
 	return out
 }
 
-func inventoryHost(h *discovery.Host) InventoryHost {
-	ih := InventoryHost{Name: h.Name, Status: inspect.StatusGreen, StatusText: "正常", Services: strings.Join(h.ServiceIDs(), ", ")}
-	if !h.Normal() {
-		ih.Status, ih.StatusText = inspect.StatusRed, "异常"
+// inventoryHost takes the status from the evaluated host health so it agrees
+// with the overview and host details; target reachability is listed per target.
+// A host without evaluated health falls back to reachability alone.
+func inventoryHost(h *discovery.Host, health map[string]*inspect.HostHealth) InventoryHost {
+	ih := InventoryHost{Name: h.Name, Status: inspect.StatusGreen, Services: strings.Join(h.ServiceIDs(), ", ")}
+	if hh := health[h.Key]; hh != nil {
+		ih.Status = hh.Status
+	} else if !h.Normal() {
+		ih.Status = inspect.StatusRed
 	}
+	ih.StatusText = statusText[ih.Status]
 	for _, t := range h.Targets {
 		health := "正常"
 		if !t.Up {

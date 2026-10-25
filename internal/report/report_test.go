@@ -71,7 +71,7 @@ func TestBuildAndMarkdown(t *testing.T) {
 	}
 	for _, want := range []string{
 		"`93.26%`", "`> 90%`", "mountpoint=/data", "job=node，instance=10.0.0.1:9100",
-		"| 正常 | prometheus |", "prometheus / 10.0.0.1:9090 / 正常", "node / 10.0.0.3:9100 / 宕机",
+		"| 异常 | prometheus |", "prometheus / 10.0.0.1:9090 / 正常", "node / 10.0.0.3:9100 / 宕机",
 		"job=node，instance=10.0.0.3:9100，lastError：no route to host", "job=mysqld，instance=10.0.0.3:9104，lastError：connection refused",
 		"lab-1：缺少 biz, dc", "无上次巡检记录", "weird", "config/services.yaml", "主机宕机或网络不通", "no route to host",
 		"坏巡检项", "执行失败", "bad_data: parse error line2", "通用默认（待企业标准替换）", "磁盘使用率最高", "h1：99.5%",
@@ -163,6 +163,34 @@ func TestOptionalSections(t *testing.T) {
 	}
 	if strings.Contains(html, evil) {
 		t.Error("AI text not escaped")
+	}
+}
+
+func TestInventoryStatusFromHealth(t *testing.T) {
+	in := sampleInput()
+	in.Detail.Hosts = append(in.Detail.Hosts, &inspect.HostHealth{Key: "10.0.0.9", Name: "warn-1", Score: 90, Status: "yellow", Warn: 1})
+	in.Hosts = append(in.Hosts, &discovery.Host{Key: "10.0.0.9", Name: "warn-1", Status: discovery.StatusNormal,
+		Services: []discovery.Service{{ID: "redis"}},
+		Targets:  []discovery.Target{{Job: "redis", Instance: "10.0.0.9:9121", Up: true}}})
+	r := Build(in)
+	got := map[string]InventoryHost{}
+	for _, h := range r.Inventory {
+		got[h.Name] = h
+	}
+	if h := got["warn-1"]; h.StatusText != "关注" || h.Status != "yellow" || h.Targets[0].Health != "正常" {
+		t.Errorf("warn-1 = %+v, want 关注 with reachable target", h)
+	}
+	if h := got["app-"+evil]; h.StatusText != "异常" || h.Targets[0].Health != "正常" {
+		t.Errorf("crit host = %+v, want 异常 with reachable target", h)
+	}
+	if h := got["lab-1"]; h.StatusText != "异常" {
+		t.Errorf("down host = %+v, want 异常", h)
+	}
+	if md := r.Markdown(); !strings.Contains(md, "| 关注 | redis |") || !strings.Contains(md, "redis / 10.0.0.9:9121 / 正常") {
+		t.Errorf("markdown inventory lacks warn row:\n%s", md)
+	}
+	if h, err := r.HTML(); err != nil || !strings.Contains(h, `<td class="yellow">关注</td><td>redis</td>`) {
+		t.Error("html inventory lacks warn row")
 	}
 }
 

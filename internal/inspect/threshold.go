@@ -1,6 +1,7 @@
 package inspect
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"time"
@@ -86,6 +87,8 @@ func moreExtreme(op string, a, b float64) bool {
 
 func usable(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) }
 
+var errDurationExpr = errors.New("查询窗口或步长使用了时长表达式，无法静态校验，请改用字面量时长 (duration expression not allowed)")
+
 // CheckWindows rejects queries whose range or subquery windows exceed maxRange
 // or whose subquery step is below minStep. It walks the parsed expression so
 // every spelling the PromQL parser accepts (including bare seconds such as
@@ -100,11 +103,15 @@ func CheckWindows(query string, maxRange, minStep time.Duration) error {
 	parser.Inspect(expr, func(n parser.Node, _ []parser.Node) error {
 		switch v := n.(type) {
 		case *parser.MatrixSelector:
-			if v.Range > maxRange {
+			if v.RangeExpr != nil {
+				werr = errDurationExpr
+			} else if v.Range > maxRange {
 				werr = fmt.Errorf("查询窗口 [%s] 超过上限 %s (window exceeds max_range)", v.Range, maxRange)
 			}
 		case *parser.SubqueryExpr:
 			switch {
+			case v.RangeExpr != nil || v.StepExpr != nil:
+				werr = errDurationExpr
 			case v.Range > maxRange:
 				werr = fmt.Errorf("子查询窗口 [%s] 超过上限 %s (window exceeds max_range)", v.Range, maxRange)
 			case v.Step != 0 && v.Step < minStep:
