@@ -70,6 +70,9 @@ func scoreHosts(hosts []*discovery.Host, findings []*Finding) ([]*HostHealth, Ho
 	return out, counts
 }
 
+// AggregateBy summarises host health per value of the internal label field dim.
+func AggregateBy(dim string, hosts []*HostHealth) []Aggregate { return aggregate(dim, hosts) }
+
 // aggregate summarises health per value of the internal label field dim.
 // A bucket is red when at least a fifth of its hosts are red.
 func aggregate(dim string, hosts []*HostHealth) []Aggregate {

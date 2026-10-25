@@ -12,6 +12,7 @@ import (
 	"yunwei/internal/config"
 	"yunwei/internal/inspect"
 	"yunwei/internal/prom"
+	"yunwei/internal/report"
 	"yunwei/internal/store"
 )
 
@@ -45,7 +46,7 @@ func newRunner(b *config.Bundle) (*inspect.Runner, *store.Store, error) {
 func runInspect(args []string, stdout, stderr io.Writer) int {
 	fs := newFlagSet("inspect", stderr)
 	cfgPath := fs.String("config", defaultConfigPath, "app.yaml 路径 (path to app.yaml)")
-	fs.String("out", "", "报告输出目录, 默认取配置 report.out_dir (report output dir)")
+	outDir := fs.String("out", "", "报告输出目录, 默认取配置 report.out_dir (report output dir)")
 	if code, done := parseFlags(fs, args); done {
 		return code
 	}
@@ -73,6 +74,20 @@ func runInspect(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	printSummary(stdout, out)
+	dir := *outDir
+	if dir == "" {
+		dir = b.App.Report.OutDir
+	}
+	if dir == "" {
+		dir = "reports"
+	}
+	files, err := report.Write(dir, report.Build(report.FromOutcome(out, b.Inspection.Items)))
+	if err != nil {
+		fmt.Fprintf(stderr, "写入报告失败 (report write failed): %v\n", err)
+		return 1
+	}
+	fmt.Fprintf(stdout, "报告 (report): %s\n", files.Markdown)
+	fmt.Fprintf(stdout, "报告 (report): %s\n", files.HTML)
 	return 0
 }
 
