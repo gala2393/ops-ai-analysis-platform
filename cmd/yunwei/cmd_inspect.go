@@ -12,7 +12,6 @@ import (
 	"yunwei/internal/config"
 	"yunwei/internal/inspect"
 	"yunwei/internal/prom"
-	"yunwei/internal/report"
 	"yunwei/internal/store"
 )
 
@@ -61,6 +60,7 @@ func runInspect(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	defer st.Close()
+	runner.OnSuccess = reportFileHook(b, *outDir)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
@@ -74,20 +74,12 @@ func runInspect(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	printSummary(stdout, out)
-	dir := *outDir
-	if dir == "" {
-		dir = b.App.Report.OutDir
-	}
-	if dir == "" {
-		dir = "reports"
-	}
-	files, err := report.Write(dir, report.Build(report.FromOutcome(out, b.Inspection.Items)))
-	if err != nil {
-		fmt.Fprintf(stderr, "写入报告失败 (report write failed): %v\n", err)
+	if out.ReportErr != nil {
+		fmt.Fprintf(stderr, "写入报告失败 (report write failed): %v\n", out.ReportErr)
 		return 1
 	}
-	fmt.Fprintf(stdout, "报告 (report): %s\n", files.Markdown)
-	fmt.Fprintf(stdout, "报告 (report): %s\n", files.HTML)
+	fmt.Fprintf(stdout, "报告 (report): %s\n", out.ReportFiles.Markdown)
+	fmt.Fprintf(stdout, "报告 (report): %s\n", out.ReportFiles.HTML)
 	return 0
 }
 

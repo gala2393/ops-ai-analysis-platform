@@ -36,6 +36,12 @@ type Detail struct {
 	Unmapped     int                         `json:"unmapped"`
 }
 
+// ReportFiles are the report paths written for a completed run.
+type ReportFiles struct {
+	Markdown string
+	HTML     string
+}
+
 // Outcome is the in-memory result of a completed run.
 type Outcome struct {
 	Run       *store.Run
@@ -43,6 +49,9 @@ type Outcome struct {
 	Discovery *discovery.Result
 	Diff      *discovery.AssetDiff
 	Detail    Detail
+	// ReportFiles and ReportErr come from the Runner.OnSuccess hook, when set.
+	ReportFiles *ReportFiles
+	ReportErr   error
 }
 
 // Runner orchestrates complete inspection runs: lock, discovery, evaluation,
@@ -54,6 +63,13 @@ type Runner struct {
 	// LockTTL defaults to DefaultLockTTL.
 	LockTTL time.Duration
 	Log     *slog.Logger
+
+	// OnSuccess, when set, runs after a run is persisted as successful. It is
+	// how report files get written for every trigger (schedule, manual, CLI);
+	// the runner itself cannot import internal/report (import cycle). Its
+	// result lands on the outcome and its error is logged, never turning a
+	// stored success into a failure.
+	OnSuccess func(ctx context.Context, out *Outcome) (*ReportFiles, error)
 
 	// inProcess rejects a second run in this process without touching the DB.
 	inProcess sync.Mutex
@@ -111,7 +127,27 @@ func (r *Runner) Run(ctx context.Context, trigger string) (*Outcome, error) {
 	if out.Run, err = r.Store.GetRun(bg, run.ID); err != nil {
 		return nil, err
 	}
+	r.onSuccess(out)
 	return out, nil
+}
+
+// onSuccess runs the report hook with a fresh context so a cancelled run
+// context cannot block report writing.
+func (r *Runner) onSuccess(out *Outcome) {
+	if r.OnSuccess == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	files, err := r.OnSuccess(ctx, out)
+	out.ReportFiles, out.ReportErr = files, err
+	switch {
+	case err != nil:
+		r.log().Error("报告文件写入失败 (report write failed)", "run", out.Run.ID, "err", err)
+	case files != nil:
+		r.log().Info("报告文件已写入 (report files written)", "run", out.Run.ID,
+			"markdown", files.Markdown, "html", files.HTML)
+	}
 }
 
 // heartbeat renews the lock until stopped; losing the lock cancels the run.

@@ -222,6 +222,66 @@ func TestSchedulerFiresScheduledRuns(t *testing.T) {
 	t.Fatal("fewer than 2 scheduled runs completed")
 }
 
+func TestRunnerInvokesOnSuccessHook(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds the 180 host mock")
+	}
+	ctx := context.Background()
+	st, err := store.Open(filepath.Join(t.TempDir(), "y.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ts := startMock(t, "../../config/mock-scenario.yaml")
+	r := newRunnerFor(t, ts.URL, st)
+
+	calls := 0
+	r.OnSuccess = func(_ context.Context, out *Outcome) (*ReportFiles, error) {
+		calls++
+		if out.Run == nil || out.Run.Status != store.StatusSuccess || out.Run.FinishedAt == nil {
+			t.Errorf("hook received an unfinished run: %+v", out.Run)
+		}
+		return &ReportFiles{Markdown: "r.md", HTML: "r.html"}, nil
+	}
+	out, err := r.Run(ctx, store.TriggerSchedule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("hook calls = %d, want 1", calls)
+	}
+	if out.ReportFiles == nil || out.ReportFiles.Markdown != "r.md" || out.ReportFiles.HTML != "r.html" {
+		t.Errorf("report files = %+v", out.ReportFiles)
+	}
+	if out.ReportErr != nil {
+		t.Errorf("report err = %v", out.ReportErr)
+	}
+
+	// A hook error surfaces on the outcome; the stored run stays successful.
+	r.OnSuccess = func(context.Context, *Outcome) (*ReportFiles, error) {
+		return nil, errors.New("disk full")
+	}
+	out, err = r.Run(ctx, store.TriggerSchedule)
+	if err != nil {
+		t.Fatalf("hook error must not fail the run: %v", err)
+	}
+	if out.ReportErr == nil || out.ReportErr.Error() != "disk full" || out.ReportFiles != nil {
+		t.Errorf("files=%+v err=%v", out.ReportFiles, out.ReportErr)
+	}
+	if out.Run.Status != store.StatusSuccess {
+		t.Errorf("status = %s", out.Run.Status)
+	}
+
+	// A failed run never invokes the hook.
+	bad := newRunnerFor(t, "http://127.0.0.1:1", st)
+	bad.OnSuccess = func(context.Context, *Outcome) (*ReportFiles, error) {
+		t.Error("hook called for a failed run")
+		return nil, nil
+	}
+	if _, err := bad.Run(ctx, store.TriggerCLI); err == nil {
+		t.Fatal("want a discovery failure")
+	}
+}
 func TestSchedulerRejectsBadSpec(t *testing.T) {
 	if _, err := NewScheduler(context.Background(), &Runner{}, []string{"nonsense"}, nil); err == nil {
 		t.Error("bad spec accepted")

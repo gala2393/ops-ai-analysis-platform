@@ -38,6 +38,8 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 	}
 	defer st.Close()
 	runner.Log = log
+	// Scheduled and API-triggered runs write report files just like the CLI.
+	runner.OnSuccess = reportFileHook(b, "")
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
