@@ -25,7 +25,8 @@ func buildTop(values map[string]map[string]*hostValue, items map[string]config.I
 
 	build := func(id, listID, title string, desc, onlyAbnormal bool) TopList {
 		l := TopList{ID: listID, Title: title, Unit: items[id].Unit, Entries: []TopEntry{}}
-		for hk, hv := range values[id] {
+		for _, hv := range values[id] {
+			hk := hv.hostKey
 			h := hosts[hk]
 			if h == nil || (onlyAbnormal && hv.level == LevelOK) {
 				continue

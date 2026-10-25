@@ -211,6 +211,39 @@ func TestWarnOnlyHostIsYellow(t *testing.T) {
 	}
 }
 
+func TestTargetDownKeepsOneFindingPerJob(t *testing.T) {
+	disc := &discovery.Result{Hosts: []*discovery.Host{
+		host("10.0.0.2", "h2", discovery.StatusNormal, nil, "node", "mysql"),
+		host("10.0.0.3", "h3", discovery.StatusNormal, nil, "node"),
+	}}
+	down := item("down", "q", "==", nil, f64(0), "critical")
+	down.GroupByExtra = []string{"job"}
+	in := &config.Inspection{Items: []config.Item{down}}
+	src := &fakeSource{answers: map[string]model.Vector{"q": {
+		sample("10.0.0.2:9100", 0, "job", "agent1"), sample("10.0.0.2:9104", 0, "job", "agent1_mariadb"),
+		sample("10.0.0.3:9100", 0, "job", "agent2"),
+	}}}
+	res, err := Run(context.Background(), src, in, disc, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Findings) != 3 {
+		t.Fatalf("findings = %d, want 3 (one per host+job)", len(res.Findings))
+	}
+	jobs := map[string]bool{}
+	for _, f := range res.Findings {
+		jobs[f.Host+"/"+f.Extra["job"]] = true
+	}
+	for _, k := range []string{"h2/agent1", "h2/agent1_mariadb", "h3/agent2"} {
+		if !jobs[k] {
+			t.Errorf("missing finding %s in %v", k, jobs)
+		}
+	}
+	if len(res.Groups) != 1 || res.Groups[0].Count != 2 || len(res.Groups[0].Hosts) != 2 || len(res.Groups[0].Findings) != 3 {
+		t.Errorf("group = %+v, want 2 hosts / 3 findings", res.Groups[0])
+	}
+}
+
 func TestPartialFailureContinues(t *testing.T) {
 	disc := &discovery.Result{Hosts: []*discovery.Host{host("h1", "h1", discovery.StatusNormal, nil, "node")}}
 	in := &config.Inspection{Items: []config.Item{

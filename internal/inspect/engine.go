@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -58,9 +57,10 @@ func (o Options) withDefaults() Options {
 
 // hostValue is the most extreme sample of a host for one item.
 type hostValue struct {
-	value  float64
-	labels map[string]string
-	level  string
+	hostKey string
+	value   float64
+	labels  map[string]string
+	level   string
 	// crossed, warn, crit, overridden describe the threshold used for this sample.
 	warn, crit *float64
 	crossed    float64
@@ -131,11 +131,11 @@ func Run(ctx context.Context, src Source, in *config.Inspection, disc *discovery
 		if oc.queried {
 			res.Queries++
 		}
-		for hk, hv := range oc.values {
+		for _, hv := range oc.values {
 			if hv.level == LevelOK {
 				continue
 			}
-			f := buildFinding(it, oc.run, hosts[hk], hv)
+			f := buildFinding(it, oc.run, hosts[hv.hostKey], hv)
 			res.Findings = append(res.Findings, f)
 			oc.run.Findings++
 		}
@@ -195,10 +195,14 @@ func evalItem(ctx context.Context, src Source, it config.Item, idx int, override
 		evaluated[host.Key] = true
 		warn, crit, over := EffectiveThreshold(it, overrides, host.Labels)
 		level, crossed := Level(it.Compare, v, warn, crit)
-		cur := oc.values[host.Key]
+		vk := host.Key
+		if perSeries(it) {
+			vk += "\x00" + string(s.Metric["job"])
+		}
+		cur := oc.values[vk]
 		if cur == nil {
-			cur = &hostValue{level: LevelOK}
-			oc.values[host.Key] = cur
+			cur = &hostValue{hostKey: host.Key, level: LevelOK}
+			oc.values[vk] = cur
 		}
 		if level != LevelOK {
 			cur.breaching++
@@ -213,6 +217,18 @@ func evalItem(ctx context.Context, src Source, it config.Item, idx int, override
 	run.Hosts = len(evaluated)
 	oc.run = run
 	return oc
+}
+
+// perSeries reports whether each job of a host is its own finding. A host has
+// one up series per scrape job; collapsing them would hide a down exporter
+// behind another down target. Per-mountpoint items stay one finding per host.
+func perSeries(it config.Item) bool {
+	for _, k := range it.GroupByExtra {
+		if k == "job" {
+			return true
+		}
+	}
+	return false
 }
 
 // better reports whether a sample with (level, v) should replace the kept one.
@@ -314,6 +330,14 @@ func sortFindings(fs []*Finding) {
 		if a.Level != b.Level {
 			return rank(a.Level) > rank(b.Level)
 		}
-		return strings.Compare(a.Host, b.Host) < 0
+		return findingLess(a, b)
 	})
+}
+
+// findingLess orders by host name, then by job so per-job findings are stable.
+func findingLess(a, b *Finding) bool {
+	if a.Host != b.Host {
+		return a.Host < b.Host
+	}
+	return a.Evidence.Labels["job"] < b.Evidence.Labels["job"]
 }

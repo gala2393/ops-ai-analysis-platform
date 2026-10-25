@@ -43,16 +43,21 @@ func buildGroups(findings []*Finding, hosts map[string]*discovery.Host) []*Probl
 	groups := make([]*ProblemGroup, 0, len(order))
 	for _, k := range order {
 		g := byKey[k]
-		sort.Slice(g.Findings, func(i, j int) bool { return g.Findings[i].Host < g.Findings[j].Host })
-		g.Count = len(g.Findings)
+		sort.Slice(g.Findings, func(i, j int) bool { return findingLess(g.Findings[i], g.Findings[j]) })
 		var affected []*discovery.Host
+		seen := map[string]bool{}
 		for _, f := range g.Findings {
+			if seen[f.HostKey] {
+				continue
+			}
+			seen[f.HostKey] = true
 			g.Hosts = append(g.Hosts, f.HostKey)
 			g.HostNames = append(g.HostNames, f.Host)
 			if h := hosts[f.HostKey]; h != nil {
 				affected = append(affected, h)
 			}
 		}
+		g.Count = len(g.Hosts)
 		g.Common = commonFeatures(affected)
 		g.Title = fmt.Sprintf("%s%s（%d 台）", g.CheckName, titleSuffix(g.Findings[0].Evidence.Threshold.Compare), g.Count)
 		groups = append(groups, g)
