@@ -123,10 +123,23 @@ func Build(in Input) *Report {
 		if len(h.MissingLabels) > 0 {
 			r.MissingLabels = append(r.MissingLabels, MissingLabelHost{Host: h.Name, Missing: strings.Join(h.MissingLabels, ", ")})
 		}
+		r.Inventory = append(r.Inventory, inventoryHost(h))
 		if h.Status != discovery.StatusNormal {
-			r.Down = append(r.Down, DownHost{Host: h.Name, Cause: downCause(h), Jobs: strings.Join(h.DownJobs, ", "), LastError: h.DownError})
+			dh := DownHost{Host: h.Name, Cause: downCause(h)}
+			for _, t := range h.Targets {
+				if !t.Up {
+					dh.Targets = append(dh.Targets, DownTarget{Job: t.Job, Instance: t.Instance, LastError: oneLine(t.LastError)})
+				}
+			}
+			if len(dh.Targets) == 0 {
+				for _, j := range h.DownJobs {
+					dh.Targets = append(dh.Targets, DownTarget{Job: j, LastError: oneLine(h.DownError)})
+				}
+			}
+			r.Down = append(r.Down, dh)
 		}
 	}
+	sort.Slice(r.Inventory, func(i, j int) bool { return r.Inventory[i].Name < r.Inventory[j].Name })
 	sort.Slice(r.MissingLabels, func(i, j int) bool { return r.MissingLabels[i].Host < r.MissingLabels[j].Host })
 	sort.Slice(r.Down, func(i, j int) bool { return r.Down[i].Host < r.Down[j].Host })
 
@@ -195,11 +208,27 @@ func hostDetails(in Input, itemCfg map[string]config.Item) []HostDetail {
 	return out
 }
 
+func inventoryHost(h *discovery.Host) InventoryHost {
+	ih := InventoryHost{Name: h.Name, Status: inspect.StatusGreen, StatusText: "正常", Services: strings.Join(h.ServiceIDs(), ", ")}
+	if !h.Normal() {
+		ih.Status, ih.StatusText = inspect.StatusRed, "异常"
+	}
+	for _, t := range h.Targets {
+		health := "正常"
+		if !t.Up {
+			health = "宕机"
+		}
+		ih.Targets = append(ih.Targets, InventoryTarget{Job: t.Job, Instance: t.Instance, Health: health})
+	}
+	return ih
+}
+
 func findingLine(f *inspect.Finding, it config.Item) FindingLine {
 	unit := f.Unit
 	th := f.Evidence.Threshold
 	l := FindingLine{CheckID: f.CheckID, CheckName: f.CheckName, Level: f.Level, LevelText: levelText[f.Level],
-		QueryID: f.Evidence.QueryID, PromQL: oneLine(f.Evidence.PromQL), Value: formatValue(f.Value, unit),
+		Job: f.Evidence.Labels["job"], Instance: f.Evidence.Labels["instance"],
+		QueryID: f.Evidence.QueryID, PromQL: f.Evidence.PromQL, Value: formatValue(f.Value, unit),
 		Threshold: th.Compare + " " + formatValue(th.Crossed, unit), Source: sourceOf(it)}
 	if len(f.Extra) > 0 {
 		keys := make([]string, 0, len(f.Extra))

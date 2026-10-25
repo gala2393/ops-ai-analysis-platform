@@ -32,6 +32,31 @@ func mdCode(s string) string {
 	return fence + s + fence
 }
 
+// mdBlock renders s verbatim as a fenced code block nested two spaces deep
+// (list-item content). The fence outgrows any backtick run inside s.
+func mdBlock(s string) string {
+	s = strings.ReplaceAll(strings.ReplaceAll(s, "\r\n", "\n"), "\r", "\n")
+	longest, run := 0, 0
+	for _, r := range s {
+		if r == '`' {
+			run++
+			if run > longest {
+				longest = run
+			}
+		} else {
+			run = 0
+		}
+	}
+	fence := strings.Repeat("`", max(3, longest+1))
+	var b strings.Builder
+	b.WriteString("  " + fence + "promql\n")
+	for _, line := range strings.Split(s, "\n") {
+		b.WriteString("  " + line + "\n")
+	}
+	b.WriteString("  " + fence)
+	return b.String()
+}
+
 func orDash(s string) string {
 	if s == "" {
 		return "-"
@@ -100,7 +125,24 @@ func (r *Report) Markdown() string {
 	}
 
 	w("")
-	w("## 三、单机详情")
+	w("## 三、主机清单")
+	w("")
+	if len(r.Inventory) == 0 {
+		w("没有发现主机。")
+	} else {
+		w("| 主机 | 状态 | 已识别服务 | 采集目标（job / instance / 健康） |")
+		w("|---|---|---|---|")
+		for _, h := range r.Inventory {
+			ts := make([]string, len(h.Targets))
+			for i, t := range h.Targets {
+				ts[i] = fmt.Sprintf("%s / %s / %s", t.Job, t.Instance, t.Health)
+			}
+			w("| %s | %s | %s | %s |", mdEscape(h.Name), h.StatusText, mdEscape(orDash(h.Services)), mdEscape(orDash(strings.Join(ts, "；"))))
+		}
+	}
+
+	w("")
+	w("## 四、单机详情")
 	if len(r.Hosts) == 0 {
 		w("")
 		w("没有存在发现项的主机。")
@@ -116,17 +158,22 @@ func (r *Report) Markdown() string {
 			w("- 状态：%s", mdEscape(h.DownText))
 		}
 		for _, f := range h.Findings {
-			line := fmt.Sprintf("- [%s] %s：当前值 %s，阈值 %s", f.LevelText, mdEscape(f.CheckName), mdCode(f.Value), mdCode(f.Threshold))
+			line := fmt.Sprintf("- [%s] %s", f.LevelText, mdEscape(f.CheckName))
+			if f.Job != "" || f.Instance != "" {
+				line += fmt.Sprintf("（job=%s，instance=%s）", mdEscape(orDash(f.Job)), mdEscape(orDash(f.Instance)))
+			}
+			line += fmt.Sprintf("：当前值 %s，阈值 %s", mdCode(f.Value), mdCode(f.Threshold))
 			if f.Extra != "" {
 				line += "，" + mdEscape(f.Extra)
 			}
-			line += fmt.Sprintf("，PromQL：%s（%s）", mdCode(f.PromQL), mdEscape(f.QueryID))
+			line += fmt.Sprintf("，PromQL（%s）：", mdEscape(f.QueryID))
 			w("%s", line)
+			w("%s", mdBlock(f.PromQL))
 		}
 	}
 
 	w("")
-	w("## 四、Top N")
+	w("## 五、Top N")
 	for _, t := range r.Top {
 		w("")
 		w("### %s", mdEscape(t.Title))
@@ -145,7 +192,7 @@ func (r *Report) Markdown() string {
 	}
 
 	w("")
-	w("## 五、缺标签主机")
+	w("## 六、缺标签主机")
 	w("")
 	if len(r.MissingLabels) == 0 {
 		w("所有主机标签完整。")
@@ -158,7 +205,7 @@ func (r *Report) Markdown() string {
 	}
 
 	w("")
-	w("## 六、资产变化")
+	w("## 七、资产变化")
 	w("")
 	w("%s", mdEscape(r.Assets.Summary))
 	if len(r.Assets.Lines) > 0 {
@@ -169,7 +216,7 @@ func (r *Report) Markdown() string {
 	}
 
 	w("")
-	w("## 七、未分类的 Job")
+	w("## 八、未分类的 Job")
 	w("")
 	if len(r.Unclassified) == 0 {
 		w("所有 job 均已被服务规则识别。")
@@ -182,22 +229,26 @@ func (r *Report) Markdown() string {
 	}
 
 	w("")
-	w("## 八、目标宕机与原因")
+	w("## 九、目标宕机与原因")
 	w("")
 	if len(r.Down) == 0 {
 		w("所有采集目标正常。")
 	} else {
 		for _, d := range r.Down {
-			w("- %s：%s；失败目标 job：%s；lastError：%s", mdEscape(d.Host), mdEscape(d.Cause), mdEscape(orDash(d.Jobs)), mdEscape(orDash(d.LastError)))
+			w("- %s：%s", mdEscape(d.Host), mdEscape(d.Cause))
+			for _, t := range d.Targets {
+				w("  - job=%s，instance=%s，lastError：%s", mdEscape(orDash(t.Job)), mdEscape(orDash(t.Instance)), mdEscape(orDash(t.LastError)))
+			}
 		}
 	}
 
 	if len(r.FailedItems) > 0 {
 		w("")
-		w("## 九、执行失败的巡检项")
+		w("## 十、执行失败的巡检项")
 		w("")
 		for _, f := range r.FailedItems {
-			w("- %s（%s）：执行失败，错误：%s，PromQL：%s", mdEscape(f.Name), mdEscape(f.ID), mdEscape(f.Error), mdCode(f.PromQL))
+			w("- %s（%s）：执行失败，错误：%s，PromQL：", mdEscape(f.Name), mdEscape(f.ID), mdEscape(f.Error))
+			w("%s", mdBlock(f.PromQL))
 		}
 	}
 

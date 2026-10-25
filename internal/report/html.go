@@ -47,6 +47,7 @@ body{font-family:-apple-system,"Microsoft YaHei",sans-serif;max-width:1100px;mar
 h1{border-bottom:2px solid #444;padding-bottom:.3em}h2{margin-top:2em;border-bottom:1px solid #ccc;padding-bottom:.2em}
 table{border-collapse:collapse;margin:.5em 0}td,th{border:1px solid #ccc;padding:4px 10px;text-align:left}th{background:#f3f3f3}
 code{background:#f4f4f4;padding:1px 4px;border-radius:3px;word-break:break-all}
+pre.promql{white-space:pre-wrap;word-break:break-all;background:#f4f4f4;padding:.4em .6em;margin:.3em 0;font-family:Consolas,monospace}pre.promql code{background:none;padding:0}
 .banner{padding:.6em 1em;margin:1em 0;border-left:4px solid #888;background:#f7f7f7}
 .banner.warn{border-color:#d9822b;background:#fff4e5}
 .crit,.red{color:#c0392b;font-weight:bold}.warn,.yellow{color:#b7791f;font-weight:bold}.green{color:#2f855a;font-weight:bold}
@@ -95,41 +96,46 @@ code{background:#f4f4f4;padding:1px 4px;border-radius:3px;word-break:break-all}
 </ul></div>{{end}}
 {{end}}
 
-<h2 id="hosts">三、单机详情</h2>
+<h2 id="inventory">三、主机清单</h2>
+{{if .Inventory}}<table><tr><th>主机</th><th>状态</th><th>已识别服务</th><th>采集目标（job / instance / 健康）</th></tr>
+{{range .Inventory}}<tr><td>{{.Name}}</td><td class="{{.Status}}">{{.StatusText}}</td><td>{{dash .Services}}</td><td>{{range $i, $t := .Targets}}{{if $i}}；{{end}}{{$t.Job}} / {{$t.Instance}} / {{$t.Health}}{{else}}-{{end}}</td></tr>
+{{end}}</table>{{else}}<p>没有发现主机。</p>{{end}}
+
+<h2 id="hosts">四、单机详情</h2>
 {{if not .Hosts}}<p>没有存在发现项的主机。</p>{{end}}
 {{range .Hosts}}
 <h3>{{.Name}}（<span class="{{.Status}}">{{.StatusText}}</span>，健康分 {{.Score}}）</h3>
 <ul>
 {{if .Labels}}<li>标签：{{.Labels}}</li>{{end}}
 {{if .DownText}}<li>状态：{{.DownText}}</li>{{end}}
-{{range .Findings}}<li class="finding">[<span class="{{.Level}}">{{.LevelText}}</span>] {{.CheckName}}：当前值 <code>{{.Value}}</code>，阈值 <code>{{.Threshold}}</code>{{if .Extra}}，{{.Extra}}{{end}}，PromQL：<code>{{.PromQL}}</code>（{{.QueryID}}）</li>
+{{range .Findings}}<li class="finding">[<span class="{{.Level}}">{{.LevelText}}</span>] {{.CheckName}}{{if or .Job .Instance}}（job={{dash .Job}}，instance={{dash .Instance}}）{{end}}：当前值 <code>{{.Value}}</code>，阈值 <code>{{.Threshold}}</code>{{if .Extra}}，{{.Extra}}{{end}}，PromQL（{{.QueryID}}）：<pre class="promql"><code>{{.PromQL}}</code></pre></li>
 {{end}}</ul>
 {{end}}
 
-<h2 id="top">四、Top N</h2>
+<h2 id="top">五、Top N</h2>
 {{range .Top}}
 <h3>{{.Title}}</h3>
 {{if .Entries}}<ol>{{range .Entries}}<li>{{.Host}}：{{.Value}}{{if .Extra}}（{{.Extra}}）{{end}}</li>{{end}}</ol>{{else}}<p>暂无数据。</p>{{end}}
 {{end}}
 
-<h2 id="missing-labels">五、缺标签主机</h2>
+<h2 id="missing-labels">六、缺标签主机</h2>
 {{if .MissingLabels}}<p>以下主机缺少企业标签（env/role/biz/dc/owner），会影响分组与归属：</p>
 <ul>{{range .MissingLabels}}<li>{{.Host}}：缺少 {{.Missing}}</li>{{end}}</ul>{{else}}<p>所有主机标签完整。</p>{{end}}
 
-<h2 id="assets">六、资产变化</h2>
+<h2 id="assets">七、资产变化</h2>
 <p>{{.Assets.Summary}}</p>
 {{if .Assets.Lines}}<ul>{{range .Assets.Lines}}<li>{{.}}</li>{{end}}</ul>{{end}}
 
-<h2 id="unclassified">七、未分类的 Job</h2>
+<h2 id="unclassified">八、未分类的 Job</h2>
 {{if .Unclassified}}<p>以下 job 未匹配任何服务规则（未分类），请在 config/services.yaml 中补充规则：</p>
 <ul>{{range .Unclassified}}<li>{{.Job}}：{{.Targets}} 个目标，主机 {{dash .Hosts}}</li>{{end}}</ul>{{else}}<p>所有 job 均已被服务规则识别。</p>{{end}}
 
-<h2 id="down">八、目标宕机与原因</h2>
-{{if .Down}}<ul>{{range .Down}}<li>{{.Host}}：{{.Cause}}；失败目标 job：{{dash .Jobs}}；lastError：{{dash .LastError}}</li>{{end}}</ul>{{else}}<p>所有采集目标正常。</p>{{end}}
+<h2 id="down">九、目标宕机与原因</h2>
+{{if .Down}}<ul>{{range .Down}}<li>{{.Host}}：{{.Cause}}<ul>{{range .Targets}}<li>job={{dash .Job}}，instance={{dash .Instance}}，lastError：{{dash .LastError}}</li>{{end}}</ul></li>{{end}}</ul>{{else}}<p>所有采集目标正常。</p>{{end}}
 
 {{if .FailedItems}}
-<h2 id="failed">九、执行失败的巡检项</h2>
-<ul>{{range .FailedItems}}<li>{{.Name}}（{{.ID}}）：执行失败，错误：{{.Error}}，PromQL：<code>{{.PromQL}}</code></li>{{end}}</ul>
+<h2 id="failed">十、执行失败的巡检项</h2>
+<ul>{{range .FailedItems}}<li>{{.Name}}（{{.ID}}）：执行失败，错误：{{.Error}}，PromQL：<pre class="promql"><code>{{.PromQL}}</code></pre></li>{{end}}</ul>
 {{end}}
 
 <h2 id="appendix">附录：巡检项与来源</h2>

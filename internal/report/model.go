@@ -21,7 +21,9 @@ type Report struct {
 
 	Overview Overview
 	Groups   []GroupSection
-	Hosts    []HostDetail
+	// Inventory lists every host with its services and targets, healthy or not.
+	Inventory []InventoryHost
+	Hosts     []HostDetail
 
 	Top           []TopSection
 	MissingLabels []MissingLabelHost
@@ -107,7 +109,10 @@ type FindingLine struct {
 	CheckName string
 	Level     string
 	LevelText string
+	Job       string
+	Instance  string
 	QueryID   string
+	// PromQL is the query verbatim; renderers must not normalise whitespace.
 	PromQL    string
 	Value     string
 	Threshold string
@@ -151,10 +156,32 @@ type UnclassifiedJob struct {
 
 // DownHost is a host with at least one down target.
 type DownHost struct {
-	Host      string
-	Cause     string
-	Jobs      string
+	Host    string
+	Cause   string
+	Targets []DownTarget
+}
+
+// DownTarget is one down scrape target with its error.
+type DownTarget struct {
+	Job       string
+	Instance  string
 	LastError string
+}
+
+// InventoryHost is one row of the host inventory.
+type InventoryHost struct {
+	Name       string
+	Status     string // green | yellow | red
+	StatusText string
+	Services   string
+	Targets    []InventoryTarget
+}
+
+// InventoryTarget is a scrape target of an inventory host.
+type InventoryTarget struct {
+	Job      string
+	Instance string
+	Health   string
 }
 
 // FailedItem is a check item whose query failed.
