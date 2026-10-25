@@ -1,0 +1,52 @@
+{{define "content"}}
+<h1>服务器列表</h1>
+{{if .Empty}}
+<div class="empty">
+  <p>暂无巡检数据。</p>
+  <p class="muted">运行 <code>yunwei inspect</code> 执行一次巡检后再查看。</p>
+</div>
+{{else}}
+<form id="host-filter" class="filters" method="get" action="/hosts"
+      hx-get="/hosts/rows" hx-target="#host-rows" hx-trigger="submit, change">
+  <label>环境
+    <select name="env">
+      <option value="">全部</option>
+      {{range index .Options "env"}}<option value="{{.}}"{{if eq $.Filter.Env .}} selected{{end}}>{{.}}</option>{{end}}
+    </select>
+  </label>
+  <label>角色
+    <select name="role">
+      <option value="">全部</option>
+      {{range index .Options "role"}}<option value="{{.}}"{{if eq $.Filter.Role .}} selected{{end}}>{{.}}</option>{{end}}
+    </select>
+  </label>
+  <label>业务
+    <select name="biz">
+      <option value="">全部</option>
+      {{range index .Options "biz"}}<option value="{{.}}"{{if eq $.Filter.Biz .}} selected{{end}}>{{.}}</option>{{end}}
+    </select>
+  </label>
+  <label>机房
+    <select name="dc">
+      <option value="">全部</option>
+      {{range index .Options "dc"}}<option value="{{.}}"{{if eq $.Filter.DC .}} selected{{end}}>{{.}}</option>{{end}}
+    </select>
+  </label>
+  <label>状态
+    <select name="status">
+      <option value="">全部</option>
+      <option value="green"{{if eq .Filter.Status "green"}} selected{{end}}>正常</option>
+      <option value="yellow"{{if eq .Filter.Status "yellow"}} selected{{end}}>关注</option>
+      <option value="red"{{if eq .Filter.Status "red"}} selected{{end}}>异常</option>
+    </select>
+  </label>
+  <label>搜索
+    <input type="search" name="q" id="q" value="{{.Filter.Q}}" placeholder="主机名或 IP"
+           hx-get="/hosts/rows" hx-target="#host-rows" hx-include="#host-filter"
+           hx-trigger="keyup delay:400ms changed">
+  </label>
+  <button type="submit">筛选</button>
+</form>
+<div id="host-rows">{{template "host_rows" .Rows}}</div>
+{{end}}
+{{end}}

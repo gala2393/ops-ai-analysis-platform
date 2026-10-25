@@ -1,0 +1,20 @@
+{{define "trend_chart"}}
+{{if .Unavailable}}
+<p class="muted">趋势数据不可用（目标可能已宕机或查询失败）。</p>
+{{else if .Series}}
+<svg class="trend" viewBox="0 0 {{.Width}} {{.Height}}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="{{.Title}}">
+  <text x="{{.PlotX0}}" y="12" class="chart-title">{{.Title}}</text>
+  <line x1="{{.PlotX0}}" y1="{{.PlotY0}}" x2="{{.PlotX0}}" y2="{{.PlotY1}}" class="axis"/>
+  <line x1="{{.PlotX0}}" y1="{{.PlotY1}}" x2="{{.PlotX1}}" y2="{{.PlotY1}}" class="axis"/>
+  <text x="2" y="{{.PlotY0}}" dy="6" class="chart-label">{{.YMaxLabel}}</text>
+  <text x="2" y="{{.PlotY1}}" class="chart-label">{{.YMinLabel}}</text>
+  <text x="{{.PlotX0}}" y="{{.XLabelY}}" class="chart-label">{{.XStartLabel}}</text>
+  <text x="{{.PlotX1}}" y="{{.XLabelY}}" text-anchor="end" class="chart-label">{{.XEndLabel}}</text>
+  {{range .Series}}<polyline fill="none" stroke="{{.Color}}" stroke-width="1.5" points="{{.Points}}"/>
+  {{end}}
+</svg>
+<div class="legend">{{range .Series}}<span class="legend-item"><span class="swatch" style="background:{{.Color}}"></span>{{.Name}}</span>{{end}}</div>
+{{else}}
+<p class="muted">趋势数据不可用（目标可能已宕机或查询失败）。</p>
+{{end}}
+{{end}}

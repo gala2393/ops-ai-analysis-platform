@@ -1,0 +1,20 @@
+{{define "content"}}
+<h1>告警事件</h1>
+{{if .Events}}
+<table>
+  <thead><tr><th>ID</th><th>事件</th><th>状态</th><th>告警条数</th><th>更新时间</th></tr></thead>
+  <tbody>{{range .Events}}<tr>
+    <td><a href="/alerts/{{.ID}}">#{{.ID}}</a></td>
+    <td>{{.Title}}</td>
+    <td>{{.StatusText}}</td>
+    <td>{{.Alerts}}</td>
+    <td>{{.Updated}}</td>
+  </tr>{{end}}</tbody>
+</table>
+{{else}}
+<div class="empty">
+  <p>暂无告警事件。</p>
+  <p class="muted">Alertmanager  webhook 接入后，告警会按共同原因聚合为事件并在此展示。</p>
+</div>
+{{end}}
+{{end}}

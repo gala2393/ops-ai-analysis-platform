@@ -1,0 +1,61 @@
+{{define "content"}}
+<h1>巡检项与阈值</h1>
+<p class="muted">本页为只读视图，展示当前生效的巡检配置。如需修改，请编辑 config/inspection.yaml 与 config/services.yaml 后重启服务。</p>
+
+<section>
+  <h2>巡检项（共 {{len .Items}} 项）</h2>
+  <table>
+    <thead><tr><th>ID</th><th>名称</th><th>适用服务</th><th>PromQL</th><th>比较</th><th>关注阈值 (warn)</th><th>异常阈值 (crit)</th><th>严重度</th><th>说明</th><th>处理建议</th><th>来源</th><th>启用</th></tr></thead>
+    <tbody>{{range .Items}}<tr>
+      <td><code>{{.ID}}</code></td>
+      <td>{{.Name}}</td>
+      <td>{{.AppliesTo}}</td>
+      <td><code class="promql">{{.PromQL}}</code></td>
+      <td><code>{{.Compare}}</code></td>
+      <td>{{.Warn}}</td>
+      <td>{{.Crit}}</td>
+      <td>{{.Severity}}</td>
+      <td>{{.Description}}</td>
+      <td>{{if .AdviceRef}}{{.AdviceRef}}{{else}}—{{end}}</td>
+      <td>{{.Source}}</td>
+      <td>{{.Enabled}}</td>
+    </tr>{{end}}</tbody>
+  </table>
+</section>
+
+<section>
+  <h2>阈值覆盖</h2>
+  {{if .Overrides}}
+  <table>
+    <thead><tr><th>匹配条件</th><th>巡检项</th><th>覆盖后阈值</th></tr></thead>
+    <tbody>{{range .Overrides}}<tr>
+      <td><code>{{.Match}}</code></td>
+      <td><code>{{.Item}}</code></td>
+      <td>{{.Change}}</td>
+    </tr>{{end}}</tbody>
+  </table>
+  <p class="muted">同一主机命中多条覆盖时，后面的覆盖先生效。</p>
+  {{else}}<p class="muted">未配置阈值覆盖。</p>{{end}}
+</section>
+
+<section>
+  <h2>服务识别规则</h2>
+  <table>
+    <thead><tr><th>服务 ID</th><th>名称</th><th>Job 匹配</th><th>App 匹配</th><th>指标前缀</th></tr></thead>
+    <tbody>{{range .Services}}<tr>
+      <td><code>{{.ID}}</code></td>
+      <td>{{.Name}}</td>
+      <td>{{.Jobs}}</td>
+      <td>{{.Apps}}</td>
+      <td>{{.Prefixes}}</td>
+    </tr>{{end}}</tbody>
+  </table>
+  {{if .SystemdMap}}
+  <h3>systemd 单元识别（指标 <code>{{.SystemdMetric}}</code>）</h3>
+  <table>
+    <thead><tr><th>systemd 单元</th><th>服务</th></tr></thead>
+    <tbody>{{range .SystemdMap}}<tr><td><code>{{.Unit}}</code></td><td><code>{{.Service}}</code></td></tr>{{end}}</tbody>
+  </table>
+  {{end}}
+</section>
+{{end}}

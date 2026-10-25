@@ -1,0 +1,121 @@
+{{define "content"}}
+<p class="muted"><a href="/reports">← 返回报告列表</a></p>
+<h1>巡检报告 #{{.Run.ID}}</h1>
+<p>
+  触发方式：{{triggerText .Run.Trigger}} · 开始时间：{{fmtTime .Run.StartedAt}} · 耗时：{{fmtDuration .Run.DurationMS}} · 状态：{{runStatus .Run.Status}}
+</p>
+{{if .Run.Error}}<div class="banner red">巡检失败：{{.Run.Error}}</div>{{end}}
+<p class="muted">PromQL 查询 {{.Run.Query.Count}} 次（总耗时 {{.Run.Query.TotalMS}} ms，P95 {{.Run.Query.P95MS}} ms）；问题分组 {{.Run.Groups}} 个，发现项 {{.Run.Findings}} 条。</p>
+
+<section class="cards">
+  <div class="card"><div class="label">服务器总数</div><div class="num">{{.Run.Hosts.Total}}</div></div>
+  <div class="card ok"><div class="label">正常</div><div class="num">{{.Run.Hosts.OK}}</div></div>
+  <div class="card warn"><div class="label">关注</div><div class="num">{{.Run.Hosts.Warn}}</div></div>
+  <div class="card crit"><div class="label">异常</div><div class="num">{{.Run.Hosts.Crit}}</div></div>
+</section>
+
+<section>
+  <h2>按业务</h2>
+  {{template "aggtable" .ByBiz}}
+</section>
+<section>
+  <h2>按环境</h2>
+  {{template "aggtable" .ByEnv}}
+</section>
+
+<section>
+  <h2>问题分组</h2>
+  {{if .Groups}}
+  {{range .Groups}}
+  <details class="group">
+    <summary>
+      <span class="badge {{.Level}}">{{.LevelText}}</span>
+      <strong>{{.Title}}</strong>
+      <span class="muted">（严重度：{{.Severity}}）</span>
+    </summary>
+    {{if .Common}}<p>共同特征：{{join .Common "，"}}</p>{{end}}
+    {{if .Advice}}<p class="muted">处理建议：{{.Advice}}</p>{{end}}
+    <table>
+      <thead><tr><th>主机</th><th>级别</th><th>数值</th><th>阈值</th><th>PromQL（证据）</th></tr></thead>
+      <tbody>{{range .Rows}}<tr>
+        <td><a href="/hosts/{{.HostKey}}">{{.Host}}</a></td>
+        <td><span class="badge {{.Level}}">{{.LevelText}}</span></td>
+        <td>{{.Value}}</td>
+        <td>{{.Threshold}}</td>
+        <td><code class="promql">{{.PromQL}}</code></td>
+      </tr>{{end}}</tbody>
+    </table>
+  </details>
+  {{end}}
+  {{else}}<p class="muted">本次巡检未发现问题。</p>{{end}}
+</section>
+
+<section>
+  <h2>Top N 排行</h2>
+  {{template "topn" .Top}}
+</section>
+
+<section>
+  <h2>资产变化</h2>
+  {{template "assetdiff" .}}
+</section>
+
+<section>
+  <h2>缺少标签的主机</h2>
+  {{if .Missing}}
+  <table>
+    <thead><tr><th>主机</th><th>缺少的标签</th></tr></thead>
+    <tbody>{{range .Missing}}<tr>
+      <td><a href="/hosts/{{.Key}}">{{.Host}}</a></td>
+      <td>{{.Missing}}</td>
+    </tr>{{end}}</tbody>
+  </table>
+  {{else}}<p class="muted">所有主机标签完整。</p>{{end}}
+</section>
+
+<section>
+  <h2>采集异常目标</h2>
+  {{if .Down}}
+  {{range .Down}}
+  <p><a href="/hosts/{{.Key}}">{{.Host}}</a>：{{.Cause}}</p>
+  <table>
+    <thead><tr><th>Job</th><th>实例</th><th>错误信息</th></tr></thead>
+    <tbody>{{range .Targets}}<tr><td>{{.Job}}</td><td>{{.Instance}}</td><td>{{.LastError}}</td></tr>{{end}}</tbody>
+  </table>
+  {{end}}
+  {{else}}<p class="muted">所有采集目标可达。</p>{{end}}
+</section>
+
+<section>
+  <h2>未分类 Job</h2>
+  {{if .Unclassified}}
+  <table>
+    <thead><tr><th>Job</th><th>目标数</th><th>主机</th></tr></thead>
+    <tbody>{{range .Unclassified}}<tr><td><code>{{.Job}}</code></td><td>{{.Targets}}</td><td>{{join .Hosts ", "}}</td></tr>{{end}}</tbody>
+  </table>
+  {{else}}<p class="muted">所有 job 均已识别。</p>{{end}}
+</section>
+
+<section>
+  <h2>巡检项执行</h2>
+  <table>
+    <thead><tr><th>ID</th><th>名称</th><th>查询 ID</th><th>样本数</th><th>评估主机数</th><th>发现</th><th>结果</th></tr></thead>
+    <tbody>{{range .Items}}<tr>
+      <td><code>{{.ID}}</code></td>
+      <td>{{.Name}}</td>
+      <td>{{.QueryID}}</td>
+      <td>{{.Series}}</td>
+      <td>{{.Hosts}}</td>
+      <td>{{.Findings}}</td>
+      <td>{{if .Error}}执行失败：{{.Error}}{{else}}已执行{{end}}</td>
+    </tr>{{end}}</tbody>
+  </table>
+</section>
+
+{{if .Warnings}}
+<section>
+  <h2>警告</h2>
+  <ul>{{range .Warnings}}<li>{{.}}</li>{{end}}</ul>
+</section>
+{{end}}
+{{end}}

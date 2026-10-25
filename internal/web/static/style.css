@@ -1,0 +1,163 @@
+:root {
+  --fg: #1f2933;
+  --muted: #6b7280;
+  --line: #e5e7eb;
+  --bg: #f7f8fa;
+  --card: #ffffff;
+  --green: #16a34a;
+  --yellow: #d97706;
+  --red: #dc2626;
+  --blue: #2563eb;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif;
+  color: var(--fg);
+  background: var(--bg);
+  font-size: 14px;
+}
+header.top {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 0 20px;
+  background: #1f2933;
+  color: #fff;
+  height: 48px;
+}
+header.top .brand { color: #fff; font-weight: 700; text-decoration: none; font-size: 15px; }
+header.top nav { display: flex; gap: 4px; }
+header.top nav a {
+  color: #cbd5e1;
+  text-decoration: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+}
+header.top nav a:hover { color: #fff; background: #374151; }
+header.top nav a.active { color: #fff; background: var(--blue); }
+main { max-width: 1200px; margin: 0 auto; padding: 20px; }
+footer { max-width: 1200px; margin: 0 auto; padding: 12px 20px 24px; color: var(--muted); font-size: 12px; }
+h1 { font-size: 20px; margin: 8px 0 16px; }
+h2 { font-size: 16px; margin: 20px 0 8px; border-left: 3px solid var(--blue); padding-left: 8px; }
+h3 { font-size: 14px; margin: 12px 0 6px; }
+section { margin-bottom: 8px; }
+a { color: var(--blue); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code {
+  font-family: Consolas, "Courier New", monospace;
+  background: #eef2f7;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+code.promql { word-break: break-all; white-space: normal; }
+table {
+  border-collapse: collapse;
+  width: 100%;
+  background: var(--card);
+  margin: 6px 0 12px;
+}
+th, td {
+  border: 1px solid var(--line);
+  padding: 6px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+th { background: #f1f5f9; font-weight: 600; white-space: nowrap; }
+table.kv { width: auto; min-width: 360px; }
+table.kv th { width: 120px; }
+.muted { color: var(--muted); }
+.cards { display: flex; gap: 12px; flex-wrap: wrap; margin: 12px 0; }
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 12px 20px;
+  min-width: 130px;
+}
+.card .label { color: var(--muted); font-size: 13px; }
+.card .num { font-size: 28px; font-weight: 700; margin-top: 4px; }
+.card.ok .num { color: var(--green); }
+.card.warn .num { color: var(--yellow); }
+.card.crit .num { color: var(--red); }
+.badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  color: #fff;
+  background: var(--muted);
+  white-space: nowrap;
+}
+.badge.green, .badge.ok { background: var(--green); }
+.badge.yellow, .badge.warn { background: var(--yellow); }
+.badge.red, .badge.crit { background: var(--red); }
+.banner {
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin: 10px 0;
+  color: #fff;
+}
+.banner.red { background: var(--red); }
+.banner.warn { background: var(--yellow); }
+.empty {
+  background: var(--card);
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  padding: 32px;
+  text-align: center;
+  margin: 24px 0;
+}
+form.filters {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+form.filters label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+form.filters select, form.filters input {
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-size: 13px;
+  min-width: 110px;
+  background: #fff;
+}
+form.filters button {
+  padding: 6px 16px;
+  border: none;
+  border-radius: 4px;
+  background: var(--blue);
+  color: #fff;
+  cursor: pointer;
+  font-size: 13px;
+}
+details.group {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  margin: 8px 0;
+  padding: 8px 12px;
+}
+details.group summary { cursor: pointer; padding: 4px 0; }
+details.group summary strong { margin: 0 6px; }
+svg.trend {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  width: 640px;
+  max-width: 100%;
+  display: block;
+}
+svg.trend .axis { stroke: #9ca3af; stroke-width: 1; }
+svg.trend .chart-label { font-size: 10px; fill: var(--muted); }
+svg.trend .chart-title { font-size: 12px; fill: var(--fg); }
+.legend { margin: 6px 0 12px; display: flex; gap: 16px; flex-wrap: wrap; }
+.legend-item { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); }
+.legend-item .swatch { width: 12px; height: 3px; display: inline-block; }

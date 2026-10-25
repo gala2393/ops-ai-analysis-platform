@@ -1,0 +1,26 @@
+{{define "layout"}}<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} · 运维 AI 分析平台</title>
+<link rel="stylesheet" href="/static/style.css">
+<script defer src="/static/htmx.min.js"></script>
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="/">运维 AI 分析平台</a>
+  <nav>
+    <a href="/"{{if eq .Page "overview"}} class="active"{{end}}>总览</a>
+    <a href="/hosts"{{if eq .Page "hosts"}} class="active"{{end}}>服务器列表</a>
+    <a href="/reports"{{if eq .Page "reports"}} class="active"{{end}}>巡检报告</a>
+    <a href="/alerts"{{if eq .Page "alerts"}} class="active"{{end}}>告警事件</a>
+    <a href="/checks"{{if eq .Page "checks"}} class="active"{{end}}>巡检项</a>
+  </nav>
+</header>
+<main>
+{{template "content" .}}
+</main>
+<footer><span>只读巡检平台：不会修改任何服务器，建议命令仅作展示。</span></footer>
+</body>
+</html>{{end}}

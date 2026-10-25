@@ -1,0 +1,72 @@
+{{define "content"}}
+<p class="muted"><a href="/hosts">← 返回服务器列表</a></p>
+<h1>主机 {{.Host.Name}}</h1>
+{{if .DownText}}<div class="banner red">采集异常：{{.DownText}}{{if .Host.DownError}}（{{.Host.DownError}}）{{end}}</div>{{end}}
+
+<section>
+  <h2>基本信息</h2>
+  <table class="kv">
+    <tr><th>主机名</th><td>{{.Host.Name}}</td></tr>
+    <tr><th>IP</th><td>{{join .Host.IPs ", "}}</td></tr>
+    <tr><th>健康分</th><td>{{.Health.Score}} / 100</td></tr>
+    <tr><th>状态</th><td><span class="badge {{.Health.Status}}">{{statusText .Health.Status}}</span></td></tr>
+    <tr><th>本次发现</th><td>异常 {{.Health.Crit}} 项，关注 {{.Health.Warn}} 项</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>标签</h2>
+  <table>
+    <thead><tr><th>字段</th><th>值</th></tr></thead>
+    <tbody>{{range .Labels}}<tr>
+      <td>{{.FieldZh}}（{{.Field}}）</td>
+      <td>{{if .Missing}}<span class="badge yellow">缺少标签</span> 归入 {{.Fallback}}{{else}}{{.Value}}{{end}}</td>
+    </tr>{{end}}</tbody>
+  </table>
+</section>
+
+<section>
+  <h2>采集目标</h2>
+  <table>
+    <thead><tr><th>Job</th><th>实例</th><th>状态</th><th>错误信息</th></tr></thead>
+    <tbody>{{range .Targets}}<tr>
+      <td>{{.Job}}</td>
+      <td>{{.Instance}}</td>
+      <td>{{if .Up}}<span class="badge green">正常</span>{{else}}<span class="badge red">宕机</span>{{end}}</td>
+      <td>{{if .LastError}}{{.LastError}}{{else}}—{{end}}</td>
+    </tr>{{end}}</tbody>
+  </table>
+</section>
+
+<section>
+  <h2>服务</h2>
+  {{if .Services}}
+  <table>
+    <thead><tr><th>服务</th><th>名称</th><th>识别来源</th></tr></thead>
+    <tbody>{{range .Services}}<tr><td>{{.ID}}</td><td>{{.Name}}</td><td>{{.Sources}}</td></tr>{{end}}</tbody>
+  </table>
+  {{else}}<p class="muted">未识别到服务。</p>{{end}}
+</section>
+
+<section>
+  <h2>磁盘使用率趋势（近 6 小时）</h2>
+  {{template "trend_chart" .Chart}}
+</section>
+
+<section>
+  <h2>近期发现</h2>
+  {{if .Findings}}
+  <table>
+    <thead><tr><th>报告</th><th>巡检项</th><th>级别</th><th>数值</th><th>阈值</th><th>PromQL</th></tr></thead>
+    <tbody>{{range .Findings}}<tr>
+      <td><a href="/reports/{{.RunID}}">#{{.RunID}}</a></td>
+      <td>{{.CheckName}}</td>
+      <td><span class="badge {{.Level}}">{{.LevelText}}</span></td>
+      <td>{{.Value}}</td>
+      <td>{{.Threshold}}</td>
+      <td><code>{{.PromQL}}</code></td>
+    </tr>{{end}}</tbody>
+  </table>
+  {{else}}<p class="muted">近期巡检未发现异常。</p>{{end}}
+</section>
+{{end}}

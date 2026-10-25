@@ -2,23 +2,19 @@ package main
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"time"
 
 	"yunwei/internal/inspect"
-	"yunwei/internal/store"
+	"yunwei/internal/web"
 )
 
-// runServe starts the cron scheduler and the HTTP API. The web UI handlers
-// replace the minimal run endpoints below.
+// runServe starts the cron scheduler and the web server (HTML UI + JSON API).
 func runServe(args []string, stdout, stderr io.Writer) int {
 	fs := newFlagSet("serve", stderr)
 	cfgPath := fs.String("config", defaultConfigPath, "app.yaml 路径 (path to app.yaml)")
@@ -53,7 +49,12 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 	defer sched.Stop()
 	log.Info("scheduler started", "specs", b.App.Schedule)
 
-	srv := &http.Server{Addr: b.App.Server.Listen, Handler: runsHandler(st), ReadHeaderTimeout: 10 * time.Second}
+	ui, err := web.New(st, b, runner.Prom)
+	if err != nil {
+		fmt.Fprintf(stderr, "无法初始化网页界面: %v\n", err)
+		return 1
+	}
+	srv := &http.Server{Addr: b.App.Server.Listen, Handler: ui.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	errc := make(chan error, 1)
 	go func() { errc <- srv.ListenAndServe() }()
 	fmt.Fprintf(stdout, "yunwei serve 已启动: http://%s\n", b.App.Server.Listen)
@@ -67,47 +68,4 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 	defer cancel()
 	_ = srv.Shutdown(shutdown)
 	return 0
-}
-
-func runsHandler(st *store.Store) http.Handler {
-	mux := http.NewServeMux()
-	writeJSON := func(w http.ResponseWriter, code int, v any) {
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(code)
-		_ = json.NewEncoder(w).Encode(v)
-	}
-	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-	})
-	mux.HandleFunc("GET /api/runs", func(w http.ResponseWriter, r *http.Request) {
-		runs, err := st.ListRuns(r.Context(), 200)
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-			return
-		}
-		if runs == nil {
-			runs = []*store.Run{}
-		}
-		writeJSON(w, http.StatusOK, runs)
-	})
-	mux.HandleFunc("GET /api/runs/{id}", func(w http.ResponseWriter, r *http.Request) {
-		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid run id"})
-			return
-		}
-		d, err := st.LoadRun(r.Context(), id)
-		if errors.Is(err, store.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "run not found"})
-			return
-		}
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"run": d.Run, "detail": d.Detail, "findings": d.Findings, "groups": d.Groups, "hosts": d.Hosts,
-		})
-	})
-	return mux
 }

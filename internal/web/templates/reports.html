@@ -1,0 +1,24 @@
+{{define "content"}}
+<h1>巡检报告</h1>
+{{if .Runs}}
+<table>
+  <thead><tr><th>ID</th><th>开始时间</th><th>触发</th><th>状态</th><th>主机（总数/正常/关注/异常）</th><th>分组</th><th>发现</th><th>耗时</th><th>AI 分析</th></tr></thead>
+  <tbody>{{range .Runs}}<tr>
+    <td><a href="/reports/{{.ID}}">#{{.ID}}</a></td>
+    <td>{{fmtTime .StartedAt}}</td>
+    <td>{{triggerText .Trigger}}</td>
+    <td>{{runStatus .Status}}</td>
+    <td>{{.Hosts.Total}} / {{.Hosts.OK}} / {{.Hosts.Warn}} / {{.Hosts.Crit}}</td>
+    <td>{{.Groups}}</td>
+    <td>{{.Findings}}</td>
+    <td>{{fmtDuration .DurationMS}}</td>
+    <td>{{aiStatus .AIStatus}}</td>
+  </tr>{{end}}</tbody>
+</table>
+{{else}}
+<div class="empty">
+  <p>暂无巡检报告。</p>
+  <p class="muted">运行 <code>yunwei inspect</code> 执行一次巡检后再查看。</p>
+</div>
+{{end}}
+{{end}}

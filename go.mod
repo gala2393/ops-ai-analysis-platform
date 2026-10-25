@@ -3,11 +3,13 @@ module yunwei
 go 1.24.13
 
 require (
+	github.com/go-chi/chi/v5 v5.5.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/common v0.67.4
 	github.com/prometheus/prometheus v0.309.1
 	github.com/robfig/cron/v3 v3.0.1
 	gopkg.in/yaml.v3 v3.0.1
+	modernc.org/sqlite v1.46.1
 )
 
 require (
@@ -100,5 +102,4 @@ require (
 	modernc.org/libc v1.67.6 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
-	modernc.org/sqlite v1.46.1 // indirect
 )

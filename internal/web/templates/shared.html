@@ -1,0 +1,44 @@
+{{define "aggtable"}}
+{{if .}}
+<table>
+<thead><tr><th>名称</th><th>主机数</th><th>正常</th><th>关注</th><th>异常</th><th>平均健康分</th><th>状态</th></tr></thead>
+<tbody>{{range .}}<tr>
+<td>{{.Name}}</td><td>{{.Hosts}}</td><td>{{.Green}}</td><td>{{.Yellow}}</td><td>{{.Red}}</td>
+<td>{{fmtScore .AvgScore}}</td><td><span class="badge {{.Status}}">{{statusText .Status}}</span></td>
+</tr>{{end}}</tbody>
+</table>
+{{else}}<p class="muted">暂无数据。</p>{{end}}
+{{end}}
+
+{{define "topn"}}
+{{range $t := .}}
+<h3>{{$t.Title}}</h3>
+{{if $t.Entries}}
+<table>
+<thead><tr><th>#</th><th>主机</th><th>数值</th><th>备注</th></tr></thead>
+<tbody>{{range $i, $e := $t.Entries}}<tr>
+<td>{{inc $i}}</td>
+<td><a href="/hosts/{{$e.HostKey}}">{{$e.Host}}</a></td>
+<td>{{fmtVal $e.Value $t.Unit}}</td>
+<td>{{if $e.Extra.mountpoint}}挂载点 {{$e.Extra.mountpoint}}{{end}}</td>
+</tr>{{end}}</tbody>
+</table>
+{{else}}<p class="muted">暂无数据。</p>{{end}}
+{{end}}
+{{end}}
+
+{{define "assetdiff"}}
+{{if .Diff}}
+  {{if not .Diff.HasPrevious}}<p class="muted">无上次巡检记录，本次不统计资产变化。</p>
+  {{else if .DiffEmpty}}<p class="muted">与上次巡检（#{{.Diff.PreviousRunID}}）相比，主机与服务均无变化。</p>
+  {{else}}
+  <p>与上次巡检（#{{.Diff.PreviousRunID}}）相比：新增主机 {{len .Diff.AddedHosts}} 台，移除主机 {{len .Diff.RemovedHosts}} 台，服务新增 {{len .Diff.ServicesAdded}} 台，服务移除 {{len .Diff.ServicesRemoved}} 台。</p>
+  <ul>
+  {{range .Diff.AddedHosts}}<li>新增主机 <a href="/hosts/{{.Key}}">{{.Name}}</a></li>{{end}}
+  {{range .Diff.RemovedHosts}}<li>移除主机 {{.Name}}</li>{{end}}
+  {{range .Diff.ServicesAdded}}<li>服务新增 <a href="/hosts/{{.Key}}">{{.Name}}</a>：{{join .Services ", "}}</li>{{end}}
+  {{range .Diff.ServicesRemoved}}<li>服务移除 {{.Name}}：{{join .Services ", "}}</li>{{end}}
+  </ul>
+  {{end}}
+{{else}}<p class="muted">无上次巡检记录，本次不统计资产变化。</p>{{end}}
+{{end}}

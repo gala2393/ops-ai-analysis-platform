@@ -1,0 +1,42 @@
+{{define "content"}}
+<h1>总览</h1>
+{{if .Empty}}
+<div class="empty">
+  <p>暂无巡检数据。</p>
+  <p class="muted">运行 <code>yunwei inspect</code> 执行一次巡检，或等待定时巡检自动执行后再查看。</p>
+</div>
+{{else}}
+<section class="cards">
+  <div class="card"><div class="label">服务器总数</div><div class="num">{{.Run.Hosts.Total}}</div></div>
+  <div class="card ok"><div class="label">正常</div><div class="num">{{.Run.Hosts.OK}}</div></div>
+  <div class="card warn"><div class="label">关注</div><div class="num">{{.Run.Hosts.Warn}}</div></div>
+  <div class="card crit"><div class="label">异常</div><div class="num">{{.Run.Hosts.Crit}}</div></div>
+</section>
+
+<section>
+  <h2>最近一次巡检</h2>
+  <p><a href="/reports/{{.Run.ID}}">巡检报告 #{{.Run.ID}}</a> · 触发方式：{{triggerText .Run.Trigger}} · 开始时间：{{fmtTime .Run.StartedAt}} · 耗时：{{fmtDuration .Run.DurationMS}} · 状态：{{runStatus .Run.Status}}</p>
+  <p class="muted">PromQL 查询 {{.Run.Query.Count}} 次（总耗时 {{.Run.Query.TotalMS}} ms，P95 {{.Run.Query.P95MS}} ms）；问题分组 {{.Run.Groups}} 个，发现项 {{.Run.Findings}} 条。</p>
+</section>
+
+<section>
+  <h2>按业务</h2>
+  {{template "aggtable" .ByBiz}}
+</section>
+
+<section>
+  <h2>按环境</h2>
+  {{template "aggtable" .ByEnv}}
+</section>
+
+<section>
+  <h2>资产变化</h2>
+  {{template "assetdiff" .}}
+</section>
+
+<section>
+  <h2>Top N 排行</h2>
+  {{template "topn" .Top}}
+</section>
+{{end}}
+{{end}}
