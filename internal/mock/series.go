@@ -141,16 +141,38 @@ func unameLabels(h *Host) []string {
 		"version", "#1 SMP PREEMPT_DYNAMIC", "machine", "x86_64", "domainname", "(none)"}
 }
 
+const (
+	// rebootGap is the total window of missed scrapes centred on a reboot.
+	rebootGap = 3 * time.Minute
+	// prevUptime is how long a rebooted host had been running before Boot.
+	prevUptime = 30 * 24 * time.Hour
+)
+
+// bootAt returns the boot instant of the kernel running on h at t.
+func bootAt(h *Host, t time.Time) time.Time {
+	if t.Before(h.Boot) {
+		return h.Boot.Add(-prevUptime)
+	}
+	return h.Boot
+}
+
+func inRebootGap(h *Host, t time.Time) bool {
+	d := t.Sub(h.Boot)
+	return d >= -rebootGap/2 && d < rebootGap/2
+}
+
 func (f *Fleet) nodeSeries(h *Host, add func(string, sampleFn, ...string)) {
+	// A real reboot only costs a few missed scrapes: every series keeps its
+	// history from the previous boot and counters restart at Boot.
 	booted := func(fn sampleFn) sampleFn {
 		return func(t time.Time) (float64, bool) {
-			if t.Before(h.Boot) {
+			if inRebootGap(h, t) {
 				return 0, false
 			}
 			return fn(t)
 		}
 	}
-	uptime := func(t time.Time) float64 { return t.Sub(h.Boot).Seconds() }
+	uptime := func(t time.Time) float64 { return t.Sub(bootAt(h, t)).Seconds() }
 	anchor := f.Anchor
 
 	for c := 0; c < h.CPUs; c++ {
@@ -204,7 +226,7 @@ func (f *Fleet) nodeSeries(h *Host, add func(string, sampleFn, ...string)) {
 		}))
 	}
 
-	add("node_boot_time_seconds", func(time.Time) (float64, bool) { return float64(h.Boot.Unix()), true })
+	add("node_boot_time_seconds", func(t time.Time) (float64, bool) { return float64(bootAt(h, t).Unix()), true })
 	add("node_vmstat_oom_kill", booted(func(t time.Time) (float64, bool) {
 		n := 0.0
 		for _, at := range h.OOMAt {

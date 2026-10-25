@@ -350,3 +350,67 @@ func compare(op string, v, threshold float64) bool {
 	}
 	return false
 }
+
+func TestRebootKeepsFullHistory(t *testing.T) {
+	sc := loadScenario(t, "config/mock-scenario.yaml")
+	s, ts := startMock(t, sc, nil)
+
+	var rebooted []string
+	for _, a := range s.fleet.Manifest().Anomalies {
+		if a.CheckID == "recent_reboot" {
+			rebooted = append(rebooted, a.Host)
+		}
+	}
+	if len(rebooted) == 0 {
+		t.Fatal("default scenario plants no reboot")
+	}
+
+	d := queryVector(t, ts.URL, "count_over_time(node_load1[6h])")
+	upNodes := 0
+	for _, h := range s.fleet.Hosts {
+		if tg := h.Target(KindNode); tg != nil && !tg.Down {
+			upNodes++
+		}
+	}
+	if len(d.Result) != upNodes {
+		t.Fatalf("node_load1 series = %d, want %d", len(d.Result), upNodes)
+	}
+	byName := map[string]*Host{}
+	for _, h := range s.fleet.Hosts {
+		byName[h.Name] = h
+	}
+	full := int(sc.History/sc.Step) + 1
+	for _, r := range d.Result {
+		n, _ := strconv.ParseFloat(r.Value[1].(string), 64)
+		if n < 300 {
+			t.Errorf("%s has %v samples in [6h], want >= 300", r.Metric["instance"], n)
+		}
+		if n < float64(full)-5 {
+			t.Errorf("%s lost more than a %v gap: %v of %d samples", r.Metric["instance"], rebootGap, n, full)
+		}
+	}
+
+	boots := queryVector(t, ts.URL, "time() - node_boot_time_seconds < 86400")
+	got := map[string]bool{}
+	for _, r := range boots.Result {
+		got[r.Metric["nodename"]] = true
+	}
+	for _, name := range rebooted {
+		h := byName[name]
+		if h == nil || !got[name] && !hasInstance(boots, h.Target(KindNode).Instance) {
+			t.Errorf("reboot host %s not reported by node_boot_time_seconds within 24h", name)
+		}
+	}
+	if len(boots.Result) != len(rebooted) {
+		t.Errorf("hosts booted within 24h = %d, want %d", len(boots.Result), len(rebooted))
+	}
+}
+
+func hasInstance(d vectorData, instance string) bool {
+	for _, r := range d.Result {
+		if r.Metric["instance"] == instance {
+			return true
+		}
+	}
+	return false
+}
