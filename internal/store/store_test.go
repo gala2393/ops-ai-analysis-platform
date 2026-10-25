@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -228,5 +229,63 @@ func TestPurgeBeforeRemovesOldRunsAndChildren(t *testing.T) {
 		if c != 1 || orphan != 0 {
 			t.Errorf("%s rows=%d orphans=%d, want 1 and 0", tbl, c, orphan)
 		}
+	}
+}
+
+func TestOpenEscapesURIMetacharactersInPath(t *testing.T) {
+	dir := t.TempDir()
+	names := []string{"prod#1.db", "prod#2.db", "100%25.db", "sp ace.db"}
+	stores := map[string]*Store{}
+	for _, n := range names {
+		s, err := Open(filepath.Join(dir, n))
+		if err != nil {
+			t.Fatalf("open %s: %v", n, err)
+		}
+		t.Cleanup(func() { s.Close() })
+		stores[n] = s
+	}
+	ctx := context.Background()
+	now := time.Now()
+	r, err := stores["prod#1.db"].StartRun(ctx, TriggerCLI, "a", time.Minute, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stores["prod#2.db"].GetRun(ctx, r.ID); !errors.Is(err, ErrNotFound) {
+		t.Errorf("prod#2.db sees prod#1.db's run: %v", err)
+	}
+	for _, n := range names {
+		if _, err := os.Stat(filepath.Join(dir, n)); err != nil {
+			t.Errorf("file %s not created: %v", n, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "prod")); err == nil {
+		t.Error("truncated file 'prod' was created")
+	}
+}
+
+func TestProgressIsMonotonicAndFinalizedOnSuccess(t *testing.T) {
+	ctx := context.Background()
+	s := openTemp(t)
+	now := time.Now()
+	r, _ := s.StartRun(ctx, TriggerCLI, "a", time.Minute, now)
+	for _, d := range []int{14, 13, 12} {
+		if err := s.SetProgress(ctx, r.ID, d, 14); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, _ := s.GetRun(ctx, r.ID)
+	if got.Progress.Done != 14 {
+		t.Fatalf("progress regressed to %d", got.Progress.Done)
+	}
+
+	r2Store := openTemp(t)
+	r2, _ := r2Store.StartRun(ctx, TriggerCLI, "a", time.Minute, now)
+	_ = r2Store.SetProgress(ctx, r2.ID, 12, 14)
+	if err := r2Store.CompleteRun(ctx, r2.ID, Result{FinishedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	done, _ := r2Store.GetRun(ctx, r2.ID)
+	if done.Progress.Done != 14 || done.Progress.Total != 14 {
+		t.Errorf("completed progress = %+v, want 14/14", done.Progress)
 	}
 }

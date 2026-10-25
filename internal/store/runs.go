@@ -130,10 +130,11 @@ func (s *Store) LatestSuccess(ctx context.Context) (*Run, error) {
 	return r, err
 }
 
-// SetProgress records finished items of a running run.
+// SetProgress records finished items of a running run. Progress never moves
+// backwards, so callbacks that arrive out of order cannot regress it.
 func (s *Store) SetProgress(ctx context.Context, id int64, done, total int) error {
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE runs SET progress_done = ?, progress_total = ? WHERE id = ? AND status = ?`,
+		`UPDATE runs SET progress_done = MAX(progress_done, ?), progress_total = ? WHERE id = ? AND status = ?`,
 		done, total, id, StatusRunning)
 	return err
 }
@@ -194,7 +195,7 @@ func (s *Store) CompleteRun(ctx context.Context, id int64, res Result) error {
 	return s.tx(ctx, func(tx *sql.Tx) error {
 		upd, err := tx.ExecContext(ctx, `UPDATE runs SET status = ?, finished_at = ?, hosts_total = ?, hosts_ok = ?,
 			hosts_warn = ?, hosts_crit = ?, groups_count = ?, findings_count = ?, query_count = ?,
-			query_total_ms = ?, query_p95_ms = ?, ai_status = ?, detail = ?, error = ''
+			query_total_ms = ?, query_p95_ms = ?, ai_status = ?, detail = ?, error = '', progress_done = progress_total
 			WHERE id = ? AND status = ?`,
 			StatusSuccess, ms(res.FinishedAt), res.Hosts.Total, res.Hosts.OK, res.Hosts.Warn, res.Hosts.Crit,
 			len(res.Groups), len(res.Findings), res.Query.Count, res.Query.TotalMS, res.Query.P95MS,

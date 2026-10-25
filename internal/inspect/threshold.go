@@ -3,10 +3,9 @@ package inspect
 import (
 	"fmt"
 	"math"
-	"strings"
 	"time"
 
-	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/promql/parser"
 
 	"yunwei/internal/config"
 )
@@ -88,47 +87,34 @@ func moreExtreme(op string, a, b float64) bool {
 func usable(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) }
 
 // CheckWindows rejects queries whose range or subquery windows exceed maxRange
-// or whose subquery step is below minStep.
+// or whose subquery step is below minStep. It walks the parsed expression so
+// every spelling the PromQL parser accepts (including bare seconds such as
+// [172800]) is measured; a query that does not parse cannot be bounded and is
+// rejected too.
 func CheckWindows(query string, maxRange, minStep time.Duration) error {
-	for _, tok := range bracketTokens(query) {
-		window, step, hasStep := splitWindow(tok)
-		w, err := model.ParseDuration(window)
-		if err != nil {
-			continue // not a duration, e.g. a regex character class
-		}
-		if time.Duration(w) > maxRange {
-			return fmt.Errorf("查询窗口 [%s] 超过上限 %s (window exceeds max_range)", tok, maxRange)
-		}
-		if hasStep && step != "" {
-			s, err := model.ParseDuration(step)
-			if err != nil {
-				continue
-			}
-			if time.Duration(s) < minStep {
-				return fmt.Errorf("子查询步长 [%s] 小于下限 %s (step below min_step)", tok, minStep)
-			}
-		}
+	expr, err := parser.ParseExpr(query)
+	if err != nil {
+		return fmt.Errorf("PromQL 解析失败，无法校验查询窗口 (parse error): %v", err)
 	}
-	return nil
-}
-
-func bracketTokens(q string) []string {
-	var out []string
-	for {
-		i := strings.IndexByte(q, '[')
-		if i < 0 {
-			return out
+	var werr error
+	parser.Inspect(expr, func(n parser.Node, _ []parser.Node) error {
+		switch v := n.(type) {
+		case *parser.MatrixSelector:
+			if v.Range > maxRange {
+				werr = fmt.Errorf("查询窗口 [%s] 超过上限 %s (window exceeds max_range)", v.Range, maxRange)
+			}
+		case *parser.SubqueryExpr:
+			switch {
+			case v.Range > maxRange:
+				werr = fmt.Errorf("子查询窗口 [%s] 超过上限 %s (window exceeds max_range)", v.Range, maxRange)
+			case v.Step != 0 && v.Step < minStep:
+				werr = fmt.Errorf("子查询步长 [%s] 小于下限 %s (step below min_step)", v.Step, minStep)
+			}
 		}
-		j := strings.IndexByte(q[i:], ']')
-		if j < 0 {
-			return out
+		if werr != nil {
+			return werr
 		}
-		out = append(out, q[i+1:i+j])
-		q = q[i+j+1:]
-	}
-}
-
-func splitWindow(tok string) (window, step string, hasStep bool) {
-	window, step, hasStep = strings.Cut(tok, ":")
-	return strings.TrimSpace(window), strings.TrimSpace(step), hasStep
+		return nil
+	})
+	return werr
 }

@@ -23,7 +23,10 @@ func scoreHosts(hosts []*discovery.Host, findings []*Finding) ([]*HostHealth, Ho
 	out := make([]*HostHealth, 0, len(hosts))
 	var counts HostCounts
 	for _, h := range hosts {
-		hh := &HostHealth{Key: h.Key, Name: h.Name, Labels: h.Labels}
+		hh := &HostHealth{Key: h.Key, Name: h.Name, Labels: h.Labels, Group: map[string]string{}}
+		for _, field := range discovery.LabelFields {
+			hh.Group[field], _ = h.GroupValue(field)
+		}
 		score := 100.0
 		for _, f := range byHost[h.Key] {
 			d := critDeduction[f.Severity]
@@ -79,7 +82,10 @@ func aggregate(dim string, hosts []*HostHealth) []Aggregate {
 	byName := map[string]*Aggregate{}
 	sums := map[string]int{}
 	for _, h := range hosts {
-		name := h.Labels[dim]
+		name := h.Group[dim]
+		if name == "" {
+			name = h.Labels[dim]
+		}
 		if name == "" {
 			name = unlabeled
 		}

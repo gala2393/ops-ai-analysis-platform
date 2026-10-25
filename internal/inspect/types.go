@@ -85,9 +85,12 @@ type ProblemGroup struct {
 
 // HostHealth is the score and status of one host.
 type HostHealth struct {
-	Key       string            `json:"key"`
-	Name      string            `json:"name"`
-	Labels    map[string]string `json:"labels"`
+	Key    string            `json:"key"`
+	Name   string            `json:"name"`
+	Labels map[string]string `json:"labels"`
+	// Group holds the value each label field aggregates under: the label, or
+	// the discovery job/instance fallback when the label is missing.
+	Group     map[string]string `json:"group,omitempty"`
 	Score     int               `json:"score"`
 	Status    string            `json:"status"`
 	Crit      int               `json:"crit"`

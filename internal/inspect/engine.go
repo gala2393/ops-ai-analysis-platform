@@ -146,7 +146,11 @@ func Run(ctx context.Context, src Source, in *config.Inspection, disc *discovery
 	res.Hosts, res.Counts = scoreHosts(disc.Hosts, res.Findings)
 	res.ByBiz = aggregate("biz", res.Hosts)
 	res.ByEnv = aggregate("env", res.Hosts)
-	res.Top = buildTop(values, itemByID, hosts, res.Findings, opts)
+	reboots, rebootQueried := rebootCounts(ctx, src, itemByID, hosts, opts)
+	if rebootQueried {
+		res.Queries++
+	}
+	res.Top = buildTop(values, itemByID, hosts, res.Findings, reboots, opts)
 	return res, nil
 }
 
@@ -196,8 +200,8 @@ func evalItem(ctx context.Context, src Source, it config.Item, idx int, override
 		warn, crit, over := EffectiveThreshold(it, overrides, host.Labels)
 		level, crossed := Level(it.Compare, v, warn, crit)
 		vk := host.Key
-		if perSeries(it) {
-			vk += "\x00" + string(s.Metric["job"])
+		for _, k := range it.GroupByExtra {
+			vk += "\x00" + string(s.Metric[model.LabelName(k)])
 		}
 		cur := oc.values[vk]
 		if cur == nil {
@@ -217,18 +221,6 @@ func evalItem(ctx context.Context, src Source, it config.Item, idx int, override
 	run.Hosts = len(evaluated)
 	oc.run = run
 	return oc
-}
-
-// perSeries reports whether each job of a host is its own finding. A host has
-// one up series per scrape job; collapsing them would hide a down exporter
-// behind another down target. Per-mountpoint items stay one finding per host.
-func perSeries(it config.Item) bool {
-	for _, k := range it.GroupByExtra {
-		if k == "job" {
-			return true
-		}
-	}
-	return false
 }
 
 // better reports whether a sample with (level, v) should replace the kept one.

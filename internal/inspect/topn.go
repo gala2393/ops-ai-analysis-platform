@@ -1,6 +1,7 @@
 package inspect
 
 import (
+	"math"
 	"sort"
 
 	"yunwei/internal/config"
@@ -21,7 +22,7 @@ const (
 // buildTop builds the four Top N rankings. Lists whose source item is not
 // configured are present but empty.
 func buildTop(values map[string]map[string]*hostValue, items map[string]config.Item,
-	hosts map[string]*discovery.Host, findings []*Finding, opts Options) []TopList {
+	hosts map[string]*discovery.Host, findings []*Finding, reboots map[string]float64, opts Options) []TopList {
 
 	build := func(id, listID, title string, desc, onlyAbnormal bool) TopList {
 		l := TopList{ID: listID, Title: title, Unit: items[id].Unit, Entries: []TopEntry{}}
@@ -72,10 +73,48 @@ func buildTop(values map[string]map[string]*hostValue, items map[string]config.I
 		repeat.Entries = repeat.Entries[:opts.TopN]
 	}
 
+	reboot := TopList{ID: TopReboot, Title: "重启最多（近 24 小时重启次数）", Unit: "次", Entries: []TopEntry{}}
+	// A host the recent_reboot item flags has rebooted at least once, even
+	// when the sampled window missed the boot-time step.
+	counted := map[string]float64{}
+	for hk, n := range reboots {
+		counted[hk] = n
+	}
+	for _, hv := range values[checkReboot] {
+		if hv.level != LevelOK && counted[hv.hostKey] < 1 {
+			counted[hv.hostKey] = 1
+		}
+	}
+	for hk, n := range counted {
+		if h := hosts[hk]; h != nil && n > 0 {
+			reboot.Entries = append(reboot.Entries, TopEntry{HostKey: hk, Host: h.Name, Value: n})
+		}
+	}
+	// Equal counts fall back to the most recent boot (smallest uptime).
+	uptime := func(e TopEntry) float64 {
+		if hv := values[checkReboot][e.HostKey]; hv != nil {
+			return hv.value
+		}
+		return math.Inf(1)
+	}
+	sort.Slice(reboot.Entries, func(i, j int) bool {
+		a, b := reboot.Entries[i], reboot.Entries[j]
+		if a.Value != b.Value {
+			return a.Value > b.Value
+		}
+		if ua, ub := uptime(a), uptime(b); ua != ub {
+			return ua < ub
+		}
+		return a.Host < b.Host
+	})
+	if len(reboot.Entries) > opts.TopN {
+		reboot.Entries = reboot.Entries[:opts.TopN]
+	}
+
 	return []TopList{
 		build(checkDisk, TopDiskUsage, "磁盘使用率最高", true, false),
 		build(checkGrowth, TopDiskFill, "磁盘增长最快（预计写满天数最少）", false, false),
-		build(checkReboot, TopReboot, "最近重启（距开机时间最短）", false, true),
+		reboot,
 		repeat,
 	}
 }

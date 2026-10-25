@@ -104,10 +104,14 @@ func TestEngineFindingsGroupsHealth(t *testing.T) {
 
 	got := map[string]*Finding{}
 	for _, f := range res.Findings {
-		got[f.CheckID+"/"+f.Host] = f
+		k := f.CheckID + "/" + f.Host
+		if mp := f.Extra["mountpoint"]; mp != "" && f.Host == "app-1" {
+			k += mp
+		}
+		got[k] = f
 	}
 	want := map[string]string{
-		"disk/app-1": LevelCrit, "disk/app-2": LevelCrit, "disk/db-1": LevelWarn,
+		"disk/app-1/": LevelCrit, "disk/app-1/data": LevelCrit, "disk/app-2": LevelCrit, "disk/db-1": LevelWarn,
 		"conn/db-1": LevelCrit, "down/dead-1": LevelCrit, "fill/ok-1": LevelCrit,
 	}
 	if len(got) != len(want) {
@@ -122,8 +126,8 @@ func TestEngineFindingsGroupsHealth(t *testing.T) {
 		t.Error("mysql item produced a finding for a host without mysql")
 	}
 
-	d := got["disk/app-1"]
-	if d.Value != 97 || d.Extra["mountpoint"] != "/data" || d.Breaching != 2 {
+	d := got["disk/app-1/data"]
+	if d.Value != 97 || d.Extra["mountpoint"] != "/data" || d.Breaching != 1 || got["disk/app-1/"].Value != 95 {
 		t.Errorf("worst series not kept: %+v", d)
 	}
 	if e := d.Evidence; e.QueryID != "Q1" || e.PromQL != "q_disk" || e.Value != 97 || e.Labels["mountpoint"] != "/data" ||
@@ -170,7 +174,7 @@ func TestEngineFindingsGroupsHealth(t *testing.T) {
 		name   string
 		score  int
 		status string
-	}{{"nomysql", 100, StatusGreen}, {"dead-1", 0, StatusRed}, {"app-1", 75, StatusRed}, {"db-1", 85, StatusRed}, {"ok-1", 75, StatusRed}}
+	}{{"nomysql", 100, StatusGreen}, {"dead-1", 0, StatusRed}, {"app-1", 50, StatusRed}, {"db-1", 85, StatusRed}, {"ok-1", 75, StatusRed}}
 	for _, c := range checks {
 		if h := hh[c.name]; h.Score != c.score || h.Status != c.status {
 			t.Errorf("%s = %d/%s, want %d/%s", c.name, h.Score, h.Status, c.score, c.status)
@@ -206,7 +210,7 @@ func TestWarnOnlyHostIsYellow(t *testing.T) {
 	if h := res.Hosts[0]; h.Status != StatusYellow || h.Score != 95 {
 		t.Errorf("host = %+v", h)
 	}
-	if res.Counts.Warn != 1 || res.ByEnv[0].Name != unlabeled {
+	if res.Counts.Warn != 1 || res.ByEnv[0].Name != "h1" {
 		t.Errorf("counts/env = %+v / %+v", res.Counts, res.ByEnv)
 	}
 }
@@ -497,7 +501,8 @@ func TestEngineAgainstMockManifest(t *testing.T) {
 	if len(res.ByBiz) == 0 || len(res.ByEnv) == 0 {
 		t.Error("missing biz/env aggregates")
 	}
-	if res.Queries > len(in.EnabledItems()) {
+	// One query per item plus the bounded reboot-count query.
+	if res.Queries > len(in.EnabledItems())+1 {
 		t.Errorf("queries = %d for %d items", res.Queries, len(in.EnabledItems()))
 	}
 
@@ -538,7 +543,70 @@ func TestQueryCountIndependentOfHosts(t *testing.T) {
 	}
 	small, _, _, _ := runAgainstMock(t, func(sc *config.Scenario) { sc.Hosts = 100 })
 	large, _, _, in := runAgainstMock(t, nil)
-	if small.Queries != large.Queries || large.Queries != len(in.EnabledItems()) {
+	if small.Queries != large.Queries || large.Queries != len(in.EnabledItems())+1 {
 		t.Errorf("queries: 100 hosts=%d, 180 hosts=%d, items=%d", small.Queries, large.Queries, len(in.EnabledItems()))
+	}
+}
+
+func TestRebootTopRanksByCountNotRecency(t *testing.T) {
+	disc := &discovery.Result{Hosts: []*discovery.Host{
+		host("10.0.0.1", "recent-once", discovery.StatusNormal, nil, "node"),
+		host("10.0.0.2", "older-thrice", discovery.StatusNormal, nil, "node"),
+		host("10.0.0.3", "older-twice", discovery.StatusNormal, nil, "node"),
+		host("10.0.0.4", "never", discovery.StatusNormal, nil, "node"),
+	}}
+	in := &config.Inspection{Items: []config.Item{
+		{ID: "recent_reboot", Name: "r", Query: "q_up", Compare: "<", Warn: f64(24), Unit: "小时"},
+	}}
+	src := &fakeSource{answers: map[string]model.Vector{
+		"q_up": {sample("10.0.0.1:9100", 0.1), sample("10.0.0.2:9100", 20), sample("10.0.0.3:9100", 10), sample("10.0.0.4:9100", 500)},
+		"changes(node_boot_time_seconds[86400s])": {
+			sample("10.0.0.1:9100", 1), sample("10.0.0.2:9100", 3), sample("10.0.0.3:9100", 2), sample("10.0.0.4:9100", 0),
+		},
+	}}
+	res, err := Run(context.Background(), src, in, disc, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var top TopList
+	for _, l := range res.Top {
+		if l.ID == TopReboot {
+			top = l
+		}
+	}
+	var got []string
+	for _, e := range top.Entries {
+		got = append(got, fmt.Sprintf("%s=%v", e.Host, e.Value))
+	}
+	if fmt.Sprint(got) != "[older-thrice=3 older-twice=2 recent-once=1]" || top.Unit != "次" {
+		t.Errorf("reboot top = %v unit %q", got, top.Unit)
+	}
+	if res.Queries != 2 {
+		t.Errorf("queries = %d, want 2", res.Queries)
+	}
+}
+
+func TestAggregateUsesDiscoveryFallbackForMissingLabels(t *testing.T) {
+	h1 := host("10.0.0.1", "h1", discovery.StatusNormal, map[string]string{"biz": "pay", "env": "prod"}, "node")
+	h2 := host("10.0.0.2", "h2", discovery.StatusNormal, nil, "node")
+	h2.Targets = []discovery.Target{{Job: "agent7", Instance: "10.0.0.2:9100"}}
+	h3 := host("10.0.0.3", "h3", discovery.StatusNormal, nil, "node")
+	h3.Targets = []discovery.Target{{Job: "agent8", Instance: "10.0.0.3:9100"}}
+	disc := &discovery.Result{Hosts: []*discovery.Host{h1, h2, h3}}
+	res, err := Run(context.Background(), &fakeSource{}, &config.Inspection{}, disc, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := map[string]int{}
+	for _, a := range res.ByBiz {
+		names[a.Name] = a.Hosts
+	}
+	if fmt.Sprint(names) != "map[agent7:1 agent8:1 pay:1]" {
+		t.Errorf("by biz = %v", names)
+	}
+	for _, a := range res.ByBiz {
+		if a.Name == unlabeled {
+			t.Error("fallback not applied")
+		}
 	}
 }

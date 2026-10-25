@@ -41,10 +41,14 @@ func Open(path string) (*Store, error) {
 	// Write transactions take the lock up front so concurrent processes wait on
 	// busy_timeout instead of failing with a lock upgrade error.
 	q.Set("_txlock", "immediate")
-	dsn := "file:" + filepath.ToSlash(path) + "?" + q.Encode()
-	if filepath.IsAbs(path) && !strings.HasPrefix(filepath.ToSlash(path), "/") {
-		dsn = "file:/" + filepath.ToSlash(path) + "?" + q.Encode()
+	// The path must be escaped: '#', '?' and '%' would otherwise be read as
+	// URI syntax and silently open a different, truncated file.
+	slashed := filepath.ToSlash(path)
+	if filepath.IsAbs(path) && !strings.HasPrefix(slashed, "/") {
+		slashed = "/" + slashed
 	}
+	u := url.URL{Scheme: "file", Path: slashed, RawQuery: q.Encode(), OmitHost: true}
+	dsn := u.String()
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("store: open %s: %w", path, err)
