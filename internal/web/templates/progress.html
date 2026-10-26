@@ -1,0 +1,27 @@
+{{define "run_progress"}}
+{{if .}}
+{{if eq .Status "running"}}
+<div class="run-progress" hx-get="/runs/{{.ID}}/progress" hx-trigger="every 500ms" hx-swap="outerHTML">
+  {{if gt .Progress.Total 0}}
+  <p><strong>巡检 #{{.ID}}</strong> 进行中：巡检项 {{.Progress.Done}} / {{.Progress.Total}}，已用时 {{fmtDuration .DurationMS}}</p>
+  <progress max="{{.Progress.Total}}" value="{{.Progress.Done}}"></progress>
+  {{else}}
+  <p><strong>巡检 #{{.ID}}</strong> 进行中：正在发现主机与执行巡检项…</p>
+  {{end}}
+</div>
+{{else if eq .Status "success"}}
+<div class="run-progress done">
+  <p>巡检 #{{.ID}} 已完成：主机 {{.Hosts.Total}} 台，异常 {{.Hosts.Crit}} 台，问题分组 {{.Groups}} 个。
+  <a href="/reports/{{.ID}}">查看巡检报告 #{{.ID}}</a></p>
+</div>
+{{else}}
+<div class="run-progress">
+  <div class="banner red">巡检 #{{.ID}} 失败：{{.Error}}</div>
+</div>
+{{end}}
+{{else}}
+<div class="run-progress">
+  <div class="banner warn">巡检不存在或已被清理。</div>
+</div>
+{{end}}
+{{end}}

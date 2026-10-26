@@ -1,5 +1,6 @@
 {{define "content"}}
 <h1>巡检报告</h1>
+{{template "triggerarea" .}}
 {{if .Runs}}
 <table>
   <thead><tr><th>ID</th><th>开始时间</th><th>触发</th><th>状态</th><th>主机（总数/正常/关注/异常）</th><th>分组</th><th>发现</th><th>耗时</th><th>AI 分析</th></tr></thead>

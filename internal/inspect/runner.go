@@ -92,16 +92,50 @@ func (r *Runner) log() *slog.Logger {
 // Run executes one inspection. A concurrent run, in this process or any
 // other sharing the database, is rejected with ErrRunning.
 func (r *Runner) Run(ctx context.Context, trigger string) (*Outcome, error) {
-	if !r.inProcess.TryLock() {
-		return nil, ErrRunning
-	}
-	defer r.inProcess.Unlock()
-
-	host, _ := os.Hostname()
-	run, err := r.Store.StartRun(ctx, trigger, fmt.Sprintf("%s:%d", host, os.Getpid()), r.ttl(), time.Now())
+	run, err := r.begin(ctx, trigger)
 	if err != nil {
 		return nil, err
 	}
+	return r.complete(ctx, run)
+}
+
+// RunAsync starts an inspection in a background goroutine and returns the new
+// run id immediately, so HTTP callers can answer at once and poll progress.
+// Progress and the final state are persisted in the runs table. A concurrent
+// run is rejected with ErrRunning and no run record is created.
+func (r *Runner) RunAsync(trigger string) (int64, error) {
+	run, err := r.begin(context.Background(), trigger)
+	if err != nil {
+		return 0, err
+	}
+	go func() {
+		if _, err := r.complete(context.Background(), run); err != nil {
+			r.log().Error("巡检执行失败 (async inspection failed)", "run", run.ID, "err", err)
+		}
+	}()
+	return run.ID, nil
+}
+
+// begin takes the in-process lock and creates the run record with its DB
+// lock. The caller must eventually call complete exactly once.
+func (r *Runner) begin(ctx context.Context, trigger string) (*store.Run, error) {
+	if !r.inProcess.TryLock() {
+		return nil, ErrRunning
+	}
+	host, _ := os.Hostname()
+	run, err := r.Store.StartRun(ctx, trigger, fmt.Sprintf("%s:%d", host, os.Getpid()), r.ttl(), time.Now())
+	if err != nil {
+		r.inProcess.Unlock()
+		return nil, err
+	}
+	return run, nil
+}
+
+// complete runs the created run to completion and always releases the
+// in-process lock.
+func (r *Runner) complete(ctx context.Context, run *store.Run) (*Outcome, error) {
+	defer r.inProcess.Unlock()
+
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	stopBeat := r.heartbeat(runCtx, cancel, run.ID)

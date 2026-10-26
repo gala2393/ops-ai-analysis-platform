@@ -2,6 +2,7 @@ package web
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"sort"
 
@@ -38,16 +39,19 @@ type hostFindingRow struct {
 	PromQL    string
 }
 
-// groupView is one problem group with its per-host evidence rows.
+// groupView is one problem group with its per-host evidence rows, the AI
+// analysis placeholder (M4 fills AIAnalysis) and the feedback widget.
 type groupView struct {
-	Title     string
-	Level     string
-	LevelText string
-	Severity  string
-	Count     int
-	Common    []string
-	Advice    string
-	Rows      []hostFindingRow
+	Title      string
+	Level      string
+	LevelText  string
+	Severity   string
+	Count      int
+	Common     []string
+	Advice     string
+	Rows       []hostFindingRow
+	AIAnalysis string
+	Feedback   feedbackView
 }
 
 // reportDetailData is the model of the report detail page.
@@ -114,11 +118,19 @@ func (s *Server) reportDetailPage(w http.ResponseWriter, r *http.Request) {
 		data.Diff = v.Detail.Diff
 		data.DiffEmpty = v.Detail.Diff.Empty()
 	}
-	for _, g := range v.Groups {
+	for i, g := range v.Groups {
 		gv := groupView{
 			Title: g.Title, Level: g.Level, LevelText: levelText(g.Level),
 			Severity: severityText(g.Severity), Count: g.Count, Advice: g.AdviceRef,
 		}
+		// The feedback target is the group's position within the run.
+		targetID := fmt.Sprintf("%d:%d", rd.Run.ID, i)
+		stored, ferr := s.store.FeedbackFor(r.Context(), store.TargetRunGroup, targetID)
+		if ferr != nil {
+			http.Error(w, "读取反馈失败: "+ferr.Error(), http.StatusInternalServerError)
+			return
+		}
+		gv.Feedback = newFeedbackView(store.TargetRunGroup, targetID, stored)
 		for _, c := range g.Common {
 			gv.Common = append(gv.Common, c.Field+"="+c.Value)
 		}

@@ -6,6 +6,7 @@
 </p>
 {{if .Run.Error}}<div class="banner red">巡检失败：{{.Run.Error}}</div>{{end}}
 <p class="muted">PromQL 查询 {{.Run.Query.Count}} 次（总耗时 {{.Run.Query.TotalMS}} ms，P95 {{.Run.Query.P95MS}} ms）；问题分组 {{.Run.Groups}} 个，发现项 {{.Run.Findings}} 条。</p>
+<p>下载报告：<a href="/reports/{{.Run.ID}}/download/md">Markdown</a> · <a href="/reports/{{.Run.ID}}/download/html">HTML</a></p>
 
 <section class="cards">
   <div class="card"><div class="label">服务器总数</div><div class="num">{{.Run.Hosts.Total}}</div></div>
@@ -45,6 +46,14 @@
         <td><code class="promql">{{.PromQL}}</code></td>
       </tr>{{end}}</tbody>
     </table>
+    <div class="ai-analysis">
+      <h4>AI 分析</h4>
+      {{if .AIAnalysis}}{{.AIAnalysis}}{{else}}<p class="muted">AI 分析将在后续版本提供，本次报告未包含 AI 分析。</p>{{end}}
+    </div>
+    <div class="feedback-block">
+      <h4>反馈</h4>
+      {{template "feedback_area" .Feedback}}
+    </div>
   </details>
   {{end}}
   {{else}}<p class="muted">本次巡检未发现问题。</p>{{end}}

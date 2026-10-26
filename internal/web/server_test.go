@@ -199,7 +199,7 @@ func newTestServer(t *testing.T, rq RangeQuerier) (*Server, *store.Store) {
 		t.Fatalf("store.Open: %v", err)
 	}
 	t.Cleanup(func() { st.Close() })
-	srv, err := New(st, testBundle(), rq)
+	srv, err := New(st, testBundle(), rq, nil)
 	if err != nil {
 		t.Fatalf("web.New: %v", err)
 	}

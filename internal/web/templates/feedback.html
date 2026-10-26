@@ -1,0 +1,24 @@
+{{define "feedback_area"}}
+<div class="feedback" id="{{.ElementID}}">
+  <div class="feedback-list">
+    {{if .Items}}
+    <p class="muted">已收到 {{len .Items}} 条反馈：</p>
+    <ul class="feedback-items">
+      {{range .Items}}<li><span class="badge fb-{{.Rating}}">{{.RatingText}}</span>{{if .Note}} <span class="fb-note">{{.Note}}</span>{{end}} <span class="muted">{{.Time}}</span></li>{{end}}
+    </ul>
+    {{else}}<p class="muted">尚无反馈，欢迎评价该问题组的分析与建议。</p>{{end}}
+  </div>
+  <div class="feedback-form">
+    <input type="text" name="note" id="note-{{.ElementID}}" placeholder="备注（可选）" maxlength="500">
+    <button type="button" hx-post="/api/feedback"
+      hx-vals='{"target_type":"{{.TargetType}}","target_id":"{{.TargetID}}","rating":"useful"}'
+      hx-include="#note-{{.ElementID}}" hx-target="#{{.ElementID}}" hx-swap="outerHTML">有用</button>
+    <button type="button" hx-post="/api/feedback"
+      hx-vals='{"target_type":"{{.TargetType}}","target_id":"{{.TargetID}}","rating":"useless"}'
+      hx-include="#note-{{.ElementID}}" hx-target="#{{.ElementID}}" hx-swap="outerHTML">没用</button>
+    <button type="button" hx-post="/api/feedback"
+      hx-vals='{"target_type":"{{.TargetType}}","target_id":"{{.TargetID}}","rating":"wrong"}'
+      hx-include="#note-{{.ElementID}}" hx-target="#{{.ElementID}}" hx-swap="outerHTML">错误</button>
+  </div>
+</div>
+{{end}}

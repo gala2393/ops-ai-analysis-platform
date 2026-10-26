@@ -49,7 +49,7 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 	defer sched.Stop()
 	log.Info("scheduler started", "specs", b.App.Schedule)
 
-	ui, err := web.New(st, b, runner.Prom)
+	ui, err := web.New(st, b, runner.Prom, runner)
 	if err != nil {
 		fmt.Fprintf(stderr, "无法初始化网页界面: %v\n", err)
 		return 1

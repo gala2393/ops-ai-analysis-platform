@@ -282,6 +282,127 @@ func TestRunnerInvokesOnSuccessHook(t *testing.T) {
 		t.Fatal("want a discovery failure")
 	}
 }
+
+// TestRunnerRunAsync verifies the web manual-trigger path: RunAsync returns
+// the run id immediately while the inspection continues in the background,
+// rejects a concurrent trigger, and persists progress until success.
+func TestRunnerRunAsync(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds the 180 host mock")
+	}
+	ctx := context.Background()
+	st, err := store.Open(filepath.Join(t.TempDir(), "y.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	ts := startMock(t, "../../config/mock-scenario.yaml")
+	r := newRunnerFor(t, ts.URL, st)
+
+	start := time.Now()
+	id, err := r.RunAsync(store.TriggerManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The call must return immediately, not after the whole inspection.
+	if elapsed := time.Since(start); elapsed > 10*time.Second {
+		t.Fatalf("RunAsync blocked for %v", elapsed)
+	}
+	run, err := st.GetRun(ctx, id)
+	if err != nil || run.Status != store.StatusRunning || run.Trigger != store.TriggerManual {
+		t.Fatalf("new run: %+v err=%v", run, err)
+	}
+
+	// A second trigger while the run is in progress is rejected and leaves
+	// no extra run record.
+	if _, err := r.RunAsync(store.TriggerManual); !errors.Is(err, ErrRunning) {
+		t.Fatalf("concurrent RunAsync err = %v, want ErrRunning", err)
+	}
+	if runs, _ := st.ListRuns(ctx, 0); len(runs) != 1 {
+		t.Errorf("runs = %d, want 1", len(runs))
+	}
+
+	// Progress advances in the runs table and finalizes on success.
+	seen := 0
+	deadline := time.Now().Add(90 * time.Second)
+	for time.Now().Before(deadline) {
+		run, err = st.GetRun(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if run.Progress.Done > seen {
+			seen = run.Progress.Done
+		}
+		if run.Status != store.StatusRunning {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if run.Status != store.StatusSuccess {
+		t.Fatalf("run ended with status %s (err %q)", run.Status, run.Error)
+	}
+	if run.Progress.Total == 0 || run.Progress.Done != run.Progress.Total || seen == 0 {
+		t.Errorf("progress = %+v (max seen %d)", run.Progress, seen)
+	}
+
+	// After completion the lock is free: the next trigger is accepted.
+	id2, err := r.RunAsync(store.TriggerManual)
+	if err != nil {
+		t.Fatalf("post-completion RunAsync: %v", err)
+	}
+	deadline = time.Now().Add(90 * time.Second)
+	for time.Now().Before(deadline) {
+		run2, err := st.GetRun(ctx, id2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if run2.Status == store.StatusSuccess {
+			return
+		}
+		if run2.Status == store.StatusFailed {
+			t.Fatalf("second run failed: %s", run2.Error)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatal("second run did not complete in time")
+}
+
+// TestRunnerRunAsyncFailureRecorded: a background run whose Prometheus is
+// unreachable is marked failed (never left "running") and releases the lock.
+func TestRunnerRunAsyncFailureRecorded(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(filepath.Join(t.TempDir(), "y.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	r := newRunnerFor(t, "http://127.0.0.1:1", st)
+
+	id, err := r.RunAsync(store.TriggerManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		run, err := st.GetRun(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if run.Status == store.StatusFailed {
+			if run.Error == "" {
+				t.Error("failed run carries no error message")
+			}
+			// The lock must be released: the next attempt fails on
+			// discovery, not with ErrRunning.
+			if _, err := r.Run(ctx, store.TriggerCLI); err == nil || errors.Is(err, ErrRunning) {
+				t.Errorf("after failed async run: err = %v, want a discovery failure", err)
+			}
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatal("async run never reached failed status")
+}
 func TestSchedulerRejectsBadSpec(t *testing.T) {
 	if _, err := NewScheduler(context.Background(), &Runner{}, []string{"nonsense"}, nil); err == nil {
 		t.Error("bad spec accepted")

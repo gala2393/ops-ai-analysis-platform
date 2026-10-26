@@ -35,13 +35,21 @@ type RangeQuerier interface {
 	QueryRange(ctx context.Context, query string, r promv1.Range) (model.Value, promv1.Warnings, error)
 }
 
+// RunStarter starts an inspection in the background and returns its run id.
+// *inspect.Runner satisfies it; nil disables the manual trigger.
+type RunStarter interface {
+	RunAsync(trigger string) (int64, error)
+}
+
 // Server serves the UI and API. It is safe for concurrent use.
 type Server struct {
-	store *store.Store
-	cfg   *config.Bundle
-	prom  RangeQuerier // nil disables the trend chart
-	pages map[string]*template.Template
-	rows  *template.Template
+	store   *store.Store
+	cfg     *config.Bundle
+	prom    RangeQuerier // nil disables the trend chart
+	starter RunStarter   // nil disables POST /api/runs
+	pages   map[string]*template.Template
+	rows    *template.Template
+	frags   *template.Template
 }
 
 // pageTemplates lists the extra template files each page parses on top of the
@@ -53,13 +61,13 @@ var pageTemplates = map[string][]string{
 	"checks":        {"templates/checks.html"},
 	"alerts":        {"templates/alerts.html"},
 	"reports":       {"templates/reports.html"},
-	"report_detail": {"templates/report_detail.html"},
+	"report_detail": {"templates/report_detail.html", "templates/feedback.html"},
 	"notfound":      {"templates/notfound.html"},
 }
 
 // New parses the embedded templates and binds the dependencies.
-func New(st *store.Store, cfg *config.Bundle, p RangeQuerier) (*Server, error) {
-	s := &Server{store: st, cfg: cfg, prom: p, pages: map[string]*template.Template{}}
+func New(st *store.Store, cfg *config.Bundle, p RangeQuerier, starter RunStarter) (*Server, error) {
+	s := &Server{store: st, cfg: cfg, prom: p, starter: starter, pages: map[string]*template.Template{}}
 	layout, err := template.New("layout").Funcs(funcs).ParseFS(assets, "templates/layout.html")
 	if err != nil {
 		return nil, fmt.Errorf("解析页面模板失败 (layout): %w", err)
@@ -81,6 +89,11 @@ func New(st *store.Store, cfg *config.Bundle, p RangeQuerier) (*Server, error) {
 		return nil, fmt.Errorf("解析页面模板失败 (host_rows): %w", err)
 	}
 	s.rows = rows
+	frags, err := template.New("frags").Funcs(funcs).ParseFS(assets, "templates/progress.html", "templates/feedback.html")
+	if err != nil {
+		return nil, fmt.Errorf("解析页面模板失败 (fragments): %w", err)
+	}
+	s.frags = frags
 	return s, nil
 }
 
@@ -107,14 +120,18 @@ func (s *Server) Handler() http.Handler {
 	r.Get("/hosts/{key}", s.hostDetailPage)
 	r.Get("/reports", s.reportsPage)
 	r.Get("/reports/{id}", s.reportDetailPage)
+	r.Get("/reports/{id}/download/{kind}", s.reportDownload)
+	r.Get("/runs/{id}/progress", s.runProgress)
 	r.Get("/alerts", s.alertsPage)
 	r.Get("/checks", s.checksPage)
 
 	r.Get("/api/health", s.apiHealth)
 	r.Get("/api/runs", s.apiListRuns)
+	r.Post("/api/runs", s.apiStartRun)
 	r.Get("/api/runs/{id}", s.apiGetRun)
 	r.Get("/api/hosts", s.apiListHosts)
 	r.Get("/api/alerts", s.apiListAlerts)
+	r.Post("/api/feedback", s.apiFeedback)
 
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api/") {
@@ -149,6 +166,18 @@ func (s *Server) renderRows(w http.ResponseWriter, data any) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write([]byte(buf.String()))
+}
+
+// renderFrag executes one fragment template (htmx polling/swap target).
+func (s *Server) renderFrag(w http.ResponseWriter, status int, name string, data any) {
+	var buf strings.Builder
+	if err := s.frags.ExecuteTemplate(&buf, name, data); err != nil {
+		http.Error(w, "页面渲染失败 (template error)", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
 	_, _ = w.Write([]byte(buf.String()))
 }
 
@@ -194,6 +223,7 @@ var funcs = template.FuncMap{
 	"sevText":     severityText,
 	"runStatus":   runStatusText,
 	"aiStatus":    aiStatusText,
+	"ratingText":  ratingText,
 	"join":        strings.Join,
 	"inc":         func(i int) int { return i + 1 },
 }

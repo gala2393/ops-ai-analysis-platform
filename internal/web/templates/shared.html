@@ -1,3 +1,32 @@
+{{define "triggerarea"}}
+<div class="trigger-area">
+  <button type="button" class="primary" hx-post="/api/runs" hx-swap="none" hx-on::after-request="yunweiRunTriggered(event)">手动巡检</button>
+  <span class="muted">触发一次完整巡检；与定时巡检共用任务锁，同一时间只运行一次。</span>
+</div>
+<div id="run-progress"></div>
+<script>
+function yunweiRunTriggered(evt) {
+  var el = document.getElementById('run-progress');
+  if (!el) { return; }
+  if (evt.detail.successful) {
+    var data = {};
+    try { data = JSON.parse(evt.detail.xhr.responseText); } catch (e) {}
+    if (data.id) {
+      el.innerHTML = '<div class="run-progress" hx-get="/runs/' + data.id + '/progress" hx-trigger="load" hx-swap="outerHTML">巡检 #' + data.id + ' 已启动，正在读取进度…</div>';
+      htmx.process(el);
+      return;
+    }
+  }
+  var msg = '触发巡检失败';
+  try { msg = JSON.parse(evt.detail.xhr.responseText).error || msg; } catch (e) {}
+  el.innerHTML = '';
+  var div = document.createElement('div');
+  div.className = 'banner warn';
+  div.textContent = msg;
+  el.appendChild(div);
+}
+</script>
+{{end}}
 {{define "aggtable"}}
 {{if .}}
 <table>
