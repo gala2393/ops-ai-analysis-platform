@@ -6,7 +6,8 @@ server:
 
 prometheus:
   # 真实环境 Prometheus（只读访问，低并发）
-  url: "http://PROMETHEUS_HOST:9090"
+  # 留空表示尚未配置真实环境地址；部署前请填写只读 Prometheus URL。
+  url: ""
   timeout: 30s
   max_concurrency: 2
   max_range: 24h

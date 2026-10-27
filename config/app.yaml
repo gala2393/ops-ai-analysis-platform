@@ -5,7 +5,7 @@ server:
   base_url: "http://127.0.0.1:18080"
 
 prometheus:
-  # 默认指向本地 mock；真实环境改为 http://PROMETHEUS_HOST:9090（只读访问）
+  # 默认指向本地 mock；真实环境请在独立配置中填写 Prometheus 地址（只读访问）
   url: "http://127.0.0.1:18090"
   timeout: 30s
   max_concurrency: 4

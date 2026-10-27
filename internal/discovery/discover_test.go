@@ -184,15 +184,15 @@ func TestDownCauseClassification(t *testing.T) {
 
 func TestDownHostWithoutUnameFallsBackToIP(t *testing.T) {
 	src := &fakeSource{targets: []promv1.ActiveTarget{
-		tgt("node", "", "TEST_HOST:9100", false, "no route to host", nil),
-		tgt("mysql", "", "TEST_HOST:9104", false, "no route to host", nil),
+		tgt("node", "", "10.0.0.22:9100", false, "no route to host", nil),
+		tgt("mysql", "", "10.0.0.22:9104", false, "no route to host", nil),
 	}}
 	res, err := Discover(context.Background(), src, testServices(), defaultLabels, time.Time{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	h := res.Hosts[0]
-	if h.Name != "TEST_HOST" || h.Status != StatusHostDown || len(h.MissingLabels) != len(LabelFields) {
+	if h.Name != "10.0.0.22" || h.Status != StatusHostDown || len(h.MissingLabels) != len(LabelFields) {
 		t.Errorf("host = %+v", h)
 	}
 }
